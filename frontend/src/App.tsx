@@ -1,86 +1,38 @@
-import { useState, useRef, useEffect, useReducer } from 'react'
+import { useState, useReducer } from 'react'
 import { Theme, SegmentedControl, ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
 import { ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Accordion, Toast } from "radix-ui";
+import { useWebSocket } from './WebSocket.tsx'
+import type { GitFlags, GitCommit, GitBranch, GitPartialDiff, GitTag, GitDiffFile, GitDiff, GitDiffSummary } from './Git.tsx'
+import { prettyDate } from './Utils.tsx'
 import './App.css'
 
-function prettyDate(date: any) {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "full",
-    timeStyle: "short",
-  }).format(date);
+
+type SessionState = {
+  repo: string;
+  branch: string;
+  commit_a: string;
+  commit_b: string;
+  open_paths: string[];
+  git_flags: GitFlags;
 }
 
-export function useWebSocket(url: string, onMessage: any, onError: any, onClose: any) {
-  const ws = useRef<WebSocket>(null);
-  const heartbeatInterval = useRef<number>(null);
-
-  useEffect(() => {
-    function connect() {
-      ws.current = new WebSocket(url);
-
-      ws.current.onopen = () => {
-        console.log("WebSocket connected");
-
-        // Start heartbeat
-        heartbeatInterval.current = setInterval(() => {
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(
-              JSON.stringify({ type: "heartbeat", timestamp: Date.now() }),
-            );
-          }
-        }, 10000);
-      };
-
-      ws.current.onmessage = (event) => {
-        try {
-          // console.info(`Received WS message: ${event.data}`)
-          const data = JSON.parse(event.data);
-          onMessage(data);
-        } catch (error) {
-          console.warn(`Failed to parse WS message to JSON: ${event.data}`)
-        }
-      };
-
-      ws.current.onerror = (err) => {
-        console.error("WebSocket error", err);
-        onError(err);
-      };
-
-      ws.current.onclose = (event) => {
-        console.log("WebSocket closed: ", event);
-        console.log("Attempting to reconnect WebSocket...");
-        onClose(event);
-        setTimeout(() => connect(), 3000);
-      };
-    }
-
-    // if we connect immediately, the first attempt fails (for the dev server)
-    setTimeout(() => connect(), 500);
-
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
-      if (heartbeatInterval.current) {
-        clearInterval(heartbeatInterval.current);
-      }
-    };
-  }, [url]);
-
-  const sendMsg = (o: any) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(o));
-    }
-  };
-
-  return { sendMsg };
+type State = {
+  repos: string[]
+  branches: GitBranch[]
+  tags: GitTag[]
+  commits: GitCommit[]
+  session?: SessionState
+  diff?: GitDiff
+  diffSummary?: GitDiffSummary
+  diffPartial?: GitPartialDiff
 }
 
 const reducer = (state: State, action: any): State => {
-  if (!action.type) { return { ...state }; }
-
-  // console.log(`dispatch: ${action.type}`);
+  if (!action.type) {
+    console.warn(`action is missing type: ${action}`)
+    return { ...state };
+  }
 
   switch (action.type) {
     case "repos":
@@ -106,114 +58,20 @@ const reducer = (state: State, action: any): State => {
           })
           diff.files = files
           return { ...state, diffPartial: diff };
-        } else {
-          const kvs = action.diff?.files?.map((file: GitDiffFile) => [file.file_path, file])
-          const files: Map<string, GitDiffFile> = new Map([...kvs])
-          return { ...state, diffPartial: { from_commit: action.diff.from_commit, to_commit: action.diff.to_commit, files: files } };
         }
-      } else {
-        return { ...state, diff: action.diff };
+        const kvs = action.diff?.files?.map((file: GitDiffFile) => [file.file_path, file])
+        const files: Map<string, GitDiffFile> = new Map([...kvs])
+        return { ...state, diffPartial: { from_commit: action.diff.from_commit, to_commit: action.diff.to_commit, files: files } };
       }
+      return { ...state, diff: action.diff };
     case "diff-summary":
       return { ...state, diffSummary: action.summary };
   }
+
+  console.warn(`unknown action type: ${action.type}`)
   return { ...state };
 }
 
-type GitFlags = {
-  context_lines: number
-  diff_algo: string
-  ignore_all_space: boolean
-}
-
-type SessionState = {
-  repo: string;
-  branch: string;
-  commit_a: string;
-  commit_b: string;
-  open_paths: string[];
-  git_flags: GitFlags;
-}
-
-type GitCommit = {
-  short_hash: string
-  summary: string
-  body: string
-  author: string
-  date: string
-}
-
-interface GitBranch {
-  name: string
-  is_current: boolean
-  is_remote: boolean
-  remote: string | null
-  points_to: string | null
-}
-
-interface GitTag {
-  name: string
-  message: string | null
-}
-
-type GitDiffHunk = {
-  header: string
-  old_start: number
-  old_count: number
-  new_start: number
-  new_count: number
-  content: string[]
-  added_lines: number
-  removed_lines: number
-}
-
-interface GitDiffFile {
-  file_path: string
-  change_type: string
-  hunks: GitDiffHunk[]
-}
-
-interface GitDiff {
-  from_commit: string
-  to_commit: string
-  files: GitDiffFile[]
-}
-
-interface GitPartialDiff {
-  from_commit: string
-  to_commit: string
-  files: Map<string, GitDiffFile>
-}
-
-interface GitFileChange {
-  path: string
-  change_type: string
-  old_path?: string
-  is_binary: boolean
-  additions?: number
-  deletions?: number
-  changes?: number
-}
-
-interface GitDiffSummary {
-  commit_a: string
-  commit_b: string
-  files: GitFileChange[]
-  total_files_changed: number
-  total_additions: number
-  total_deletions: number
-}
-
-interface State {
-  repos: string[]
-  branches: GitBranch[]
-  tags: GitTag[]
-  commits: GitCommit[]
-  session?: SessionState
-  diff?: GitDiff
-  diffSummary?: GitDiffSummary
-  diffPartial?: GitPartialDiff
-}
 
 type WhitespaceSwitchProps = {
   checked: boolean
@@ -232,6 +90,7 @@ function WhitespaceSwitch({ checked, onCheckedChange }: WhitespaceSwitchProps) {
   )
 }
 
+
 type AppearanceSwitchProps = {
   appearance: AppearanceType
   setAppearance: (t: AppearanceType) => void
@@ -248,6 +107,7 @@ function AppearanceSwitch({ appearance, setAppearance }: AppearanceSwitchProps) 
     </Box>
   )
 }
+
 
 type RepoSelectProps = {
   repos: string[]
@@ -289,6 +149,7 @@ function BranchSelect({ branches, branch, onBranchChange }: BranchSelectProps) {
     </Select.Root>
   )
 }
+
 
 type CommitsSelectProps = {
   state: State;
@@ -337,6 +198,7 @@ function ContextControl({ value, onInc, onDec, onReset }: ContextControlProps) {
   )
 }
 
+
 type ButtonABProps = {
   isSelectA: boolean
   isSelectB: boolean
@@ -344,7 +206,6 @@ type ButtonABProps = {
   selectB: () => void;
   unselectA: () => void;
   unselectB: () => void;
-
 }
 
 function ButtonAB({ isSelectA, isSelectB, selectA, unselectA, selectB, unselectB }: ButtonABProps) {
@@ -354,8 +215,8 @@ function ButtonAB({ isSelectA, isSelectB, selectA, unselectA, selectB, unselectB
       <Button size="1" variant="soft" color={isSelectB ? "orange" : "gray"} onClick={isSelectB ? unselectB : selectB}>B</Button>
     </Flex>
   )
-
 }
+
 
 type TagProps = {
   tag: GitTag;
@@ -379,6 +240,7 @@ function Tag({ tag, session, sendMsg }: TagProps) {
   </Flex>
   )
 }
+
 
 type CommitProps = {
   commit: GitCommit;
@@ -416,10 +278,10 @@ function Commit({ commit, session, sendMsg }: CommitProps) {
   )
 }
 
+
 type FileDiffProps = {
   file?: GitDiffFile
 }
-
 
 function FileDiff({ file }: FileDiffProps) {
   return (file && <Box>
@@ -488,6 +350,7 @@ function Diff({ session, summary, diff, sendMsg }: DiffProps) {
   )
 }
 
+
 type WSErrorToastProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -516,17 +379,11 @@ type AppearanceType = "light" | "dark"
 
 const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 
-const initialState: State = { repos: [], branches: [], tags: [], commits: [] }
-
 function App() {
-  const [state, dispatch] = useReducer<State, any>(reducer, initialState);
-
+  const [state, dispatch] = useReducer<State, any>(reducer, { repos: [], branches: [], tags: [], commits: [] });
   const [wsError, setWsError] = useState<boolean>(false);
-
   const [commitSelectType, setCommitSelectType] = useState<CommitSelectType>("commits");
-
   const [appearance, setAppearance] = useState<AppearanceType>("light")
-
   const { sendMsg } = useWebSocket(wsUrl,
     (msg: any) => {
       if (Array.isArray(msg)) {
@@ -537,11 +394,14 @@ function App() {
     }, (_: any) => setWsError(true), (_: any) => setWsError(true)
   );
 
-  const CommitTypeSelect = <SegmentedControl.Root m="2" size="1" value={commitSelectType} onValueChange={(value: CommitSelectType) => setCommitSelectType(value)}>
+  const CommitTypeSelect = <SegmentedControl.Root
+    m="2" size="1"
+    value={commitSelectType}
+    onValueChange={(value: CommitSelectType) => setCommitSelectType(value)}
+  >
     <SegmentedControl.Item value="commits">Commits</SegmentedControl.Item>
     <SegmentedControl.Item value="tags">Tags</SegmentedControl.Item>
   </SegmentedControl.Root>
-
 
   const Commits = <Flex gridArea="commits" direction="column" justify="start" overflow="auto">
     {state.session?.branch && CommitTypeSelect}
@@ -560,10 +420,6 @@ function App() {
       </Flex>
     </ScrollArea>
   </Flex>
-
-
-
-
 
   const Ribbon = <Flex gridArea="ribbon" gap="4" justify="between" width="100%" align="center" p="2" wrap="wrap">
     <RepoSelect
@@ -597,11 +453,12 @@ function App() {
     <AppearanceSwitch appearance={appearance} setAppearance={setAppearance} />
   </Flex>
 
-
   return (
     <Theme appearance={appearance}>
       <Toast.Provider>
-        <Grid height="100vh" overflow="hidden" columns="minmax(auto, 1fr) 3fr" rows="min-content" areas={` "ribbon ribbon" "commits diff" `}>
+        <Grid height="100vh"
+          overflow="hidden" columns="minmax(auto, 1fr) 3fr"
+          rows="min-content" areas={`"ribbon ribbon" "commits diff"`}>
           {Ribbon}
           {Commits}
           {state.diffSummary && state.session?.commit_a &&
