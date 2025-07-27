@@ -1,0 +1,39 @@
+[project]
+name = "diffodil"
+version = "0.1.0"
+description = "Git diffs in your browser"
+readme = "README.md"
+authors = [{ name = "Christoph Bunte", email = "christophbunte@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = [
+  "pydantic-settings>=2.10.1",
+  "rich>=14.0.0",
+  "starlette>=0.47.2",
+  "uvicorn>=0.35.0",
+  "websockets>=15.0.1",
+]
+
+[project.scripts]
+diffodil = "diffodil:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.build]
+artifacts = ["/frontend-dist"]
+include = ["/frontend-dist", "/src"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+"frontend-dist" = "diffodil/statics"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-aarch64"]
+
+[tool.pixi.pypi-dependencies]
+diffodil = { path = ".", editable = true }
+
+[tool.pixi.tasks]
