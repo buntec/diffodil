@@ -1,6 +1,6 @@
 import { useState, useReducer } from 'react'
 import { Theme, SegmentedControl, ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
-import { ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
+import { MoonIcon, ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Accordion, Toast } from "radix-ui";
 import { useWebSocket } from './WebSocket.tsx'
 import type { GitFlags, GitCommit, GitBranch, GitPartialDiff, GitTag, GitDiffFile, GitDiff, GitDiffSummary } from './Git.tsx'
@@ -83,7 +83,7 @@ function WhitespaceSwitch({ checked, onCheckedChange }: WhitespaceSwitchProps) {
     <Box>
       <Text as="label" size="2">
         <Flex gap="2">
-          <Switch size="1" checked={checked} onCheckedChange={onCheckedChange} /> Ignore all space
+          <Switch color="pink" size="1" checked={checked} onCheckedChange={onCheckedChange} /> <Code color={checked ? "pink" : "gray"} size="1">--ignore-all-space</Code>
         </Flex>
       </Text>
     </Box>
@@ -100,8 +100,8 @@ function AppearanceSwitch({ appearance, setAppearance }: AppearanceSwitchProps) 
   return (
     <Box>
       <Text as="label" size="2">
-        <Flex gap="2">
-          <Switch size="1" checked={appearance === 'dark'} onCheckedChange={(checked) => setAppearance(checked ? 'dark' : 'light')} /> Dark mode
+        <Flex gap="2" align="center">
+          <Switch color="gold" size="1" checked={appearance === 'dark'} onCheckedChange={(checked) => setAppearance(checked ? 'dark' : 'light')} /> <MoonIcon />
         </Flex>
       </Text>
     </Box>
@@ -189,11 +189,11 @@ type ContextControlProps = {
 
 function ContextControl({ value, onInc, onDec, onReset }: ContextControlProps) {
   return (
-    <Flex gap="1" direction="row">
-      <Text wrap="nowrap">Context: {value}</Text>
-      <IconButton variant="soft" size="1" onClick={onInc}><PlusCircledIcon /></IconButton >
-      <IconButton variant="soft" size="1" onClick={onDec}><MinusCircledIcon /></IconButton>
-      <IconButton variant="soft" size="1" onClick={onReset}><ResetIcon /></IconButton>
+    <Flex gap="1" direction="row" align="center">
+      <IconButton color="pink" variant="soft" size="1" onClick={onInc}><PlusCircledIcon /></IconButton >
+      <IconButton color="pink" variant="soft" size="1" onClick={onDec}><MinusCircledIcon /></IconButton>
+      <IconButton color="gray" variant="soft" size="1" onClick={onReset}><ResetIcon /></IconButton>
+      <Code color={value === 3 ? "gray" : "pink"} size="1" wrap="nowrap">--unified={value}</Code>
     </Flex>
   )
 }
