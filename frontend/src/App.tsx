@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useReducer } from 'react'
-import { SegmentedControl, ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
+import { Theme, SegmentedControl, ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
 import { ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Accordion, Toast } from "radix-ui";
 import './App.css'
@@ -232,6 +232,23 @@ function WhitespaceSwitch({ checked, onCheckedChange }: WhitespaceSwitchProps) {
   )
 }
 
+type AppearanceSwitchProps = {
+  appearance: AppearanceType
+  setAppearance: (t: AppearanceType) => void
+}
+
+function AppearanceSwitch({ appearance, setAppearance }: AppearanceSwitchProps) {
+  return (
+    <Box>
+      <Text as="label" size="2">
+        <Flex gap="2">
+          <Switch size="1" checked={appearance === 'dark'} onCheckedChange={(checked) => setAppearance(checked ? 'dark' : 'light')} /> Dark mode
+        </Flex>
+      </Text>
+    </Box>
+  )
+}
+
 type RepoSelectProps = {
   repos: string[]
   repo?: string
@@ -347,7 +364,7 @@ type TagProps = {
 }
 
 function Tag({ tag, session, sendMsg }: TagProps) {
-  return (<Flex direction="row" align="center" gap="1" m="1">
+  return (<Flex direction="row" align="center" gap="1" mb="1" mx="2" >
     <ButtonAB
       isSelectA={session?.commit_a == tag.name}
       isSelectB={session?.commit_b == tag.name}
@@ -356,7 +373,7 @@ function Tag({ tag, session, sendMsg }: TagProps) {
       selectB={() => sendMsg({ type: 'set-commit-b', commit: tag.name })}
       unselectB={() => sendMsg({ type: 'reset-commit-b', commit: tag.name })}
     />
-    <Text color={tag.name === session?.commit_a ?
+    <Text size="2" color={tag.name === session?.commit_a ?
       'cyan' : tag.name === session?.commit_b ?
         'orange' : undefined} >{tag.name}</Text>
   </Flex>
@@ -373,9 +390,6 @@ function Commit({ commit, session, sendMsg }: CommitProps) {
   return (
     <Flex direction="column" m="2" key={commit.short_hash}>
       <Flex direction="row" gap="2">
-        <Text color={commit.short_hash === session?.commit_a ?
-          'cyan' : commit.short_hash === session?.commit_b ?
-            'orange' : undefined}>{commit.short_hash}</Text>
         <ButtonAB
           isSelectA={session?.commit_a == commit.short_hash}
           isSelectB={session?.commit_b == commit.short_hash}
@@ -384,6 +398,9 @@ function Commit({ commit, session, sendMsg }: CommitProps) {
           selectB={() => sendMsg({ type: 'set-commit-b', commit: commit.short_hash })}
           unselectB={() => sendMsg({ type: 'reset-commit-b', commit: commit.short_hash })}
         />
+        <Text color={commit.short_hash === session?.commit_a ?
+          'cyan' : commit.short_hash === session?.commit_b ?
+            'orange' : undefined}>{commit.short_hash}</Text>
       </Flex>
       <Text size="1">{prettyDate(Date.parse(commit.date))}</Text>
       <Text size="1">{commit.author}</Text>
@@ -443,7 +460,7 @@ function colorFromChangeType(change_type: string): "gold" | "red" | "green" | "b
 function Diff({ session, summary, diff, sendMsg }: DiffProps) {
   return (
     <ScrollArea type="auto" scrollbars="vertical">
-      <Box gridArea="diff">
+      <Box gridArea="diff" m="2">
         <Accordion.Root type="multiple"
           value={session.open_paths}
           onValueChange={(paths: string[]) => sendMsg({ type: 'set-open-paths', paths: paths })}
@@ -454,7 +471,7 @@ function Diff({ session, summary, diff, sendMsg }: DiffProps) {
                 <div>
                   <Accordion.Trigger className="AccordionTrigger" asChild >
                     <Flex direction="row" gap="1" px="2">
-                      <Button variant="ghost" color={colorFromChangeType(file.change_type)} size="1">{file.path} ({file.change_type}) </Button>
+                      <Button variant="ghost" color={colorFromChangeType(file.change_type)} size="2">{file.path} ({file.change_type}) </Button>
                       <ChevronDownIcon className="AccordionChevron" aria-hidden />
                     </Flex>
                   </ Accordion.Trigger >
@@ -495,6 +512,8 @@ function WSErrorToast({ open, setOpen }: WSErrorToastProps) {
 
 type CommitSelectType = "commits" | "tags"
 
+type AppearanceType = "light" | "dark"
+
 const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 
 const initialState: State = { repos: [], branches: [], tags: [], commits: [] }
@@ -506,6 +525,8 @@ function App() {
 
   const [commitSelectType, setCommitSelectType] = useState<CommitSelectType>("commits");
 
+  const [appearance, setAppearance] = useState<AppearanceType>("light")
+
   const { sendMsg } = useWebSocket(wsUrl,
     (msg: any) => {
       if (Array.isArray(msg)) {
@@ -516,13 +537,13 @@ function App() {
     }, (_: any) => setWsError(true), (_: any) => setWsError(true)
   );
 
-  const CommitTypeSelect = <SegmentedControl.Root size="1" value={commitSelectType} onValueChange={(value: CommitSelectType) => setCommitSelectType(value)}>
+  const CommitTypeSelect = <SegmentedControl.Root m="2" size="1" value={commitSelectType} onValueChange={(value: CommitSelectType) => setCommitSelectType(value)}>
     <SegmentedControl.Item value="commits">Commits</SegmentedControl.Item>
     <SegmentedControl.Item value="tags">Tags</SegmentedControl.Item>
   </SegmentedControl.Root>
 
 
-  const Commits = <Flex gridArea="commits" direction="column" justify="start">
+  const Commits = <Flex gridArea="commits" direction="column" justify="start" overflow="auto">
     {state.session?.branch && CommitTypeSelect}
     <ScrollArea type="auto" scrollbars="vertical">
       <Flex direction="column">
@@ -573,20 +594,23 @@ function App() {
         onCheckedChange={(checked: boolean) => sendMsg({ type: 'ignore-all-space', value: checked })}
       />
     }
+    <AppearanceSwitch appearance={appearance} setAppearance={setAppearance} />
   </Flex>
 
 
   return (
-    <>
-      <Grid height="100vh" overflow="hidden" columns="1fr 2fr" rows="min-content" areas={` "ribbon ribbon" "commits diff" `}>
-        {Ribbon}
-        {Commits}
-        {state.diffSummary && state.session?.commit_a &&
-          <Diff session={state.session} sendMsg={sendMsg} diff={state.diffPartial} summary={state.diffSummary} />}
-      </Grid>
-      <WSErrorToast open={wsError} setOpen={setWsError} />
-      <Toast.Viewport />
-    </>
+    <Theme appearance={appearance}>
+      <Toast.Provider>
+        <Grid height="100vh" overflow="hidden" columns="minmax(auto, 1fr) 3fr" rows="min-content" areas={` "ribbon ribbon" "commits diff" `}>
+          {Ribbon}
+          {Commits}
+          {state.diffSummary && state.session?.commit_a &&
+            <Diff session={state.session} sendMsg={sendMsg} diff={state.diffPartial} summary={state.diffSummary} />}
+        </Grid>
+        <WSErrorToast open={wsError} setOpen={setWsError} />
+        <Toast.Viewport />
+      </Toast.Provider>
+    </Theme>
   )
 }
 
