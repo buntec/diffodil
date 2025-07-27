@@ -161,7 +161,7 @@ type BranchSelectProps = {
 function BranchSelect({ branches, branch, onBranchChange }: BranchSelectProps) {
   return (
     <Select.Root size="2" onValueChange={onBranchChange} value={branch ? branch : ''}>
-      <Select.Trigger variant="soft" placeholder="Select branch" />
+      <Select.Trigger color="gold" variant="soft" placeholder="Select branch" />
       <Select.Content>
         {branches.map((branch) =>
           <Select.Item key={branch.name} value={branch.name}>{branch.name}</Select.Item>

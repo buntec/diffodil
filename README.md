@@ -1,3 +1,5 @@
 # Diffodil 🌼
 
-Git diff in your browser.
+Git diffs in your browser.
+
+Work in progress! 🚧
