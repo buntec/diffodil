@@ -19,6 +19,7 @@ from diffodil.git import (
     Commit,
     GitBranch,
     GitDiff,
+    GitDiffAlgorithm,
     GitDiffSummary,
     GitFlags,
     GitTag,
@@ -126,6 +127,12 @@ class MsgSetOpenPaths:
 
 
 @dataclass
+class MsgSetDiffAlgo:
+    algo: GitDiffAlgorithm
+    type: str = "set-diff-algo"
+
+
+@dataclass
 class MsgSetCommitA:
     commit: str
     type: str = "set-commit-a"
@@ -217,6 +224,7 @@ type MsgClient = (
     | MsgResetCommitA
     | MsgResetCommitB
     | MsgSwapCommits
+    | MsgSetDiffAlgo
     | MsgContextInc
     | MsgContextDec
     | MsgContextReset
@@ -293,6 +301,8 @@ def decode_client_msg(msg: str) -> MsgClient:
             return MsgClosePath(path)
         case {"type": "set-open-paths", "paths": paths}:
             return MsgSetOpenPaths(paths)
+        case {"type": "set-diff-algo", "algo": algo}:
+            return MsgSetDiffAlgo(algo)
         case _:
             raise RuntimeError(f"failed to decode client message: {msg}")
 
@@ -417,6 +427,9 @@ async def websocket_endpoint(websocket: WebSocket):
             case MsgSetOpenPaths(paths):
                 state.open_paths = paths
                 ev_state_change.set()
+            case MsgSetDiffAlgo(algo):
+                state.git_flags.diff_algo = algo
+                ev_state_change.set()
             case _:
                 logger.warning(f"unhandled WS message: {msg}")
 
@@ -427,14 +440,14 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             state_prev = copy.deepcopy(state)
             await ev_state_change.wait()
-
             await q_tx.put(MsgSessionState(state))
 
             if (
-                state.repo != state_prev.repo
-                or state.branch != state_prev.branch
-                or state.commit_a != state_prev.commit_a
-                or state.commit_b != state_prev.commit_a
+                (state.repo != state_prev.repo)
+                or (state.branch != state_prev.branch)
+                or (state.commit_a != state_prev.commit_a)
+                or (state.commit_b != state_prev.commit_b)
+                or (state.git_flags != state_prev.git_flags)
             ):
                 await send_diff_summary(state)
                 if state.open_paths:

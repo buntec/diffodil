@@ -3,7 +3,7 @@ import { Theme, SegmentedControl, ScrollArea, Callout, Switch, Select, IconButto
 import { MoonIcon, ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Accordion, Toast } from "radix-ui";
 import { useWebSocket } from './WebSocket.tsx'
-import type { GitFlags, GitCommit, GitBranch, GitPartialDiff, GitTag, GitDiffFile, GitDiff, GitDiffSummary } from './Git.tsx'
+import type { GitDiffAlgo, GitFlags, GitCommit, GitBranch, GitPartialDiff, GitTag, GitDiffFile, GitDiff, GitDiffSummary } from './Git.tsx'
 import { prettyDate } from './Utils.tsx'
 import './App.css'
 
@@ -130,6 +130,28 @@ function RepoSelect({ repos, repo, onRepoChange }: RepoSelectProps) {
 }
 
 
+type AlgoSelectProps = {
+  algo?: GitDiffAlgo
+  onAlgoChange: (algo: GitDiffAlgo) => void
+}
+
+function AlgoSelect({ algo, onAlgoChange }: AlgoSelectProps) {
+  return (
+    <Flex direction="row" align="center" gap="1">
+      <Code color={algo == "myers" ? "gray" : "pink"} size="1">--diff-algorithm</Code>
+      <Select.Root size="1" onValueChange={onAlgoChange} value={algo ? algo : ''}>
+        <Select.Trigger color="gray" variant="soft" />
+        <Select.Content >
+          {['myers', 'patience', 'histogram', 'minimal'].map((name) =>
+            <Select.Item key={name} value={name}>{name}</Select.Item>
+          )}
+        </Select.Content>
+      </Select.Root>
+    </Flex>
+  )
+}
+
+
 type BranchSelectProps = {
   branches: GitBranch[]
   branch?: string
@@ -190,8 +212,8 @@ type ContextControlProps = {
 function ContextControl({ value, onInc, onDec, onReset }: ContextControlProps) {
   return (
     <Flex gap="1" direction="row" align="center">
-      <IconButton color="pink" variant="soft" size="1" onClick={onInc}><PlusCircledIcon /></IconButton >
-      <IconButton color="pink" variant="soft" size="1" onClick={onDec}><MinusCircledIcon /></IconButton>
+      <IconButton color="gray" variant="soft" size="1" onClick={onInc}><PlusCircledIcon /></IconButton >
+      <IconButton color="gray" variant="soft" size="1" onClick={onDec}><MinusCircledIcon /></IconButton>
       <IconButton color="gray" variant="soft" size="1" onClick={onReset}><ResetIcon /></IconButton>
       <Code color={value === 3 ? "gray" : "pink"} size="1" wrap="nowrap">--unified={value}</Code>
     </Flex>
@@ -421,7 +443,7 @@ function App() {
     </ScrollArea>
   </Flex>
 
-  const Ribbon = <Flex gridArea="ribbon" gap="4" justify="between" width="100%" align="center" p="2" wrap="wrap">
+  const Ribbon = <Flex gridArea="ribbon" gap="2" justify="between" align="center" p="2" wrap="wrap">
     <RepoSelect
       repo={state.session?.repo}
       repos={state.repos} onRepoChange={(repo) => sendMsg({ type: "repo-select", repo: repo })}
@@ -435,6 +457,13 @@ function App() {
       />
     }
     <CommitsSelect state={state} sendMsg={sendMsg} />
+    {
+      state.session &&
+      <AlgoSelect
+        algo={state.session?.git_flags.diff_algo}
+        onAlgoChange={(algo) => sendMsg({ type: 'set-diff-algo', algo: algo })}
+      />
+    }
     {
       state.session &&
       <ContextControl
