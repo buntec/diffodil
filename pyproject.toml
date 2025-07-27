@@ -20,18 +20,9 @@ diffodil = "diffodil:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-
-[tool.hatch.build]
-artifacts = ["/frontend-dist"]
-include = ["/frontend-dist", "/src"]
-
-[tool.hatch.build.targets.wheel.sources]
-"src" = ""
-"frontend-dist" = "diffodil/statics"
-
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["linux-aarch64"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 
 [tool.pixi.pypi-dependencies]
 diffodil = { path = ".", editable = true }
