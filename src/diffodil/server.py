@@ -496,11 +496,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @asynccontextmanager
 async def lifespan(_):
     settings.root = os.path.abspath(settings.root)
-    print(settings)
-
     global_state.repos = find_git_repos(settings.root)
-    print(global_state)
-
     yield
 
 
