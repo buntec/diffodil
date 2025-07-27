@@ -184,6 +184,16 @@ class MsgContextInc:
 
 
 @dataclass
+class MsgMaxCountInc:
+    type: str = "max-count-inc"
+
+
+@dataclass
+class MsgMaxCountDec:
+    type: str = "max-count-dec"
+
+
+@dataclass
 class MsgSetIgnoreAllSpace:
     value: bool
     type: str = "ignore-all-space"
@@ -228,6 +238,8 @@ type MsgClient = (
     | MsgContextInc
     | MsgContextDec
     | MsgContextReset
+    | MsgMaxCountInc
+    | MsgMaxCountDec
     | MsgSetIgnoreAllSpace
     | MsgPing
     | MsgPong
@@ -283,6 +295,10 @@ def decode_client_msg(msg: str) -> MsgClient:
             return MsgContextInc()
         case {"type": "context-dec"}:
             return MsgContextDec()
+        case {"type": "max-count-inc"}:
+            return MsgMaxCountInc()
+        case {"type": "max-count-dec"}:
+            return MsgMaxCountDec()
         case {"type": "ignore-all-space", "value": value}:
             return MsgSetIgnoreAllSpace(value)
         case {"type": "context-reset"}:
@@ -331,9 +347,9 @@ async def websocket_endpoint(websocket: WebSocket):
     async def send_repo_data(repo: str, branch: str | None):
         branches = await get_list_of_branches(repo)
         tags = await get_list_of_tags(repo)
-        commits = await get_git_log(repo, branch, 25)
+        commits = await get_git_log(repo, branch, state.git_flags.max_count)
         await q_tx.put(MsgBranches(branches))
-        await q_tx.put(MsgTags(tags[:50]))
+        await q_tx.put(MsgTags(tags[:100]))  # TODO: add user filter
         await q_tx.put(MsgCommits(commits))
         await q_tx.put(MsgSessionState(state))
 
@@ -395,6 +411,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 if state.git_flags.context_lines != 3:
                     state.git_flags.context_lines = 3
                     ev_state_change.set()
+            case MsgMaxCountInc():
+                state.git_flags.max_count += 25
+                ev_state_change.set()
+            case MsgMaxCountDec():
+                if state.git_flags.max_count > 25:
+                    state.git_flags.max_count -= 25
+                    ev_state_change.set()
             case MsgSetIgnoreAllSpace(value):
                 state.git_flags.ignore_all_space = value
                 ev_state_change.set()
@@ -413,7 +436,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 if state.branch != branch:
                     state.branch = branch
                     if state.repo:
-                        commits = await get_git_log(state.repo, branch, 25)
+                        commits = await get_git_log(
+                            state.repo, branch, state.git_flags.max_count
+                        )
                         await q_tx.put(MsgCommits(commits))
                     ev_state_change.set()
             case MsgOpenPath(path):
@@ -441,6 +466,14 @@ async def websocket_endpoint(websocket: WebSocket):
             state_prev = copy.deepcopy(state)
             await ev_state_change.wait()
             await q_tx.put(MsgSessionState(state))
+
+            if (
+                (state.repo != state_prev.repo)
+                or (state.branch != state_prev.branch)
+                or (state.git_flags.max_count != state_prev.git_flags.max_count)
+            ):
+                if state.repo:
+                    await send_repo_data(state.repo, state.branch)
 
             if (
                 (state.repo != state_prev.repo)

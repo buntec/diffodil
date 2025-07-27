@@ -3,6 +3,7 @@ export type GitDiffAlgo = "myers" | "minimal" | "patience" | "histogram"
 export type GitFileChangeType = "added" | "deleted" | "modified" | "renamed" | "copied"
 
 export type GitFlags = {
+  max_count: number
   context_lines: number
   diff_algo: GitDiffAlgo
   ignore_all_space: boolean

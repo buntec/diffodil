@@ -221,6 +221,23 @@ function ContextControl({ value, onInc, onDec, onReset }: ContextControlProps) {
 }
 
 
+type MaxCountControlProps = {
+  value: number
+  onInc: () => void;
+  onDec: () => void;
+}
+
+function MaxCountControl({ value, onInc, onDec }: MaxCountControlProps) {
+  return (
+    <Flex gap="1" direction="row" align="center">
+      <IconButton color="gray" variant="soft" size="1" onClick={onInc}><PlusCircledIcon /></IconButton >
+      <IconButton color="gray" variant="soft" size="1" onClick={onDec}><MinusCircledIcon /></IconButton>
+      <Code color={value === 25 ? "gray" : "pink"} size="1" wrap="nowrap">--max-count={value}</Code>
+    </Flex>
+  )
+}
+
+
 type ButtonABProps = {
   isSelectA: boolean
   isSelectB: boolean
@@ -465,8 +482,13 @@ function App() {
       />
     }
     {
-      state.session &&
-      <ContextControl
+      state.session && <MaxCountControl
+        value={state.session?.git_flags.max_count}
+        onInc={() => sendMsg({ type: "max-count-inc" })}
+        onDec={() => sendMsg({ type: "max-count-dec" })} />
+    }
+    {
+      state.session && <ContextControl
         value={state.session?.git_flags.context_lines}
         onReset={() => sendMsg({ type: "context-reset" })}
         onInc={() => sendMsg({ type: "context-inc" })}

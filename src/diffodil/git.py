@@ -27,6 +27,7 @@ class GitDiffAlgorithm(StrEnum):
 
 @dataclass
 class GitFlags:
+    max_count: int = 25
     context_lines: int = 3
     diff_algo: GitDiffAlgorithm = GitDiffAlgorithm.MYERS
     ignore_all_space: bool = False
