@@ -323,7 +323,7 @@ async def websocket_endpoint(websocket: WebSocket):
         tags = await get_list_of_tags(repo)
         commits = await get_git_log(repo, branch, 25)
         await q_tx.put(MsgBranches(branches))
-        await q_tx.put(MsgTags(tags))
+        await q_tx.put(MsgTags(tags[:50]))
         await q_tx.put(MsgCommits(commits))
         await q_tx.put(MsgSessionState(state))
 

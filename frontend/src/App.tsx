@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useReducer } from 'react'
-import { ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
+import { SegmentedControl, ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
 import { ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Accordion, Toast } from "radix-ui";
 import './App.css'
@@ -240,7 +240,7 @@ type RepoSelectProps = {
 
 function RepoSelect({ repos, repo, onRepoChange }: RepoSelectProps) {
   return (
-    <Select.Root size="2" onValueChange={onRepoChange} value={repo}>
+    <Select.Root size="2" onValueChange={onRepoChange} value={repo ? repo : ''}>
       <Select.Trigger variant="soft" placeholder="Select repo" />
       <Select.Content>
         {repos.map((repo) =>
@@ -261,7 +261,7 @@ type BranchSelectProps = {
 
 function BranchSelect({ branches, branch, onBranchChange }: BranchSelectProps) {
   return (
-    <Select.Root size="2" onValueChange={onBranchChange} value={branch}>
+    <Select.Root size="2" onValueChange={onBranchChange} value={branch ? branch : ''}>
       <Select.Trigger variant="soft" placeholder="Select branch" />
       <Select.Content>
         {branches.map((branch) =>
@@ -340,6 +340,29 @@ function ButtonAB({ isSelectA, isSelectB, selectA, unselectA, selectB, unselectB
 
 }
 
+type TagProps = {
+  tag: GitTag;
+  session?: SessionState;
+  sendMsg: (msg: any) => void;
+}
+
+function Tag({ tag, session, sendMsg }: TagProps) {
+  return (<Flex direction="row" align="center" gap="1" m="1">
+    <ButtonAB
+      isSelectA={session?.commit_a == tag.name}
+      isSelectB={session?.commit_b == tag.name}
+      selectA={() => sendMsg({ type: 'set-commit-a', commit: tag.name })}
+      unselectA={() => sendMsg({ type: 'reset-commit-a', commit: tag.name })}
+      selectB={() => sendMsg({ type: 'set-commit-b', commit: tag.name })}
+      unselectB={() => sendMsg({ type: 'reset-commit-b', commit: tag.name })}
+    />
+    <Text color={tag.name === session?.commit_a ?
+      'cyan' : tag.name === session?.commit_b ?
+        'orange' : undefined} >{tag.name}</Text>
+  </Flex>
+  )
+}
+
 type CommitProps = {
   commit: GitCommit;
   session?: SessionState;
@@ -348,7 +371,7 @@ type CommitProps = {
 
 function Commit({ commit, session, sendMsg }: CommitProps) {
   return (
-    <Flex direction="column" gap="1" m="4" key={commit.short_hash}>
+    <Flex direction="column" m="2" key={commit.short_hash}>
       <Flex direction="row" gap="2">
         <Text color={commit.short_hash === session?.commit_a ?
           'cyan' : commit.short_hash === session?.commit_b ?
@@ -366,7 +389,7 @@ function Commit({ commit, session, sendMsg }: CommitProps) {
       <Text size="1">{commit.author}</Text>
       <Box display="contents" className="commit-hover-wrapper">
         <Box>
-          <Blockquote className="commit-summary" size="1" color="ruby">{commit.summary}</Blockquote>
+          <Blockquote className="commit-summary" size="1" color="crimson">{commit.summary}{commit.body ? '(...)' : null}</Blockquote>
         </Box>
         <Box>
           <Blockquote className="commit-body" size="1" color="gold">{commit.body}</Blockquote>
@@ -470,6 +493,7 @@ function WSErrorToast({ open, setOpen }: WSErrorToastProps) {
   )
 }
 
+type CommitSelectType = "commits" | "tags"
 
 const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 
@@ -479,6 +503,8 @@ function App() {
   const [state, dispatch] = useReducer<State, any>(reducer, initialState);
 
   const [wsError, setWsError] = useState<boolean>(false);
+
+  const [commitSelectType, setCommitSelectType] = useState<CommitSelectType>("commits");
 
   const { sendMsg } = useWebSocket(wsUrl,
     (msg: any) => {
@@ -490,11 +516,32 @@ function App() {
     }, (_: any) => setWsError(true), (_: any) => setWsError(true)
   );
 
-  const Commits = <ScrollArea type="auto" scrollbars="vertical">
-    <Flex gridArea="commits" direction="column">
-      {state.commits.map((commit) => <Commit key={commit.short_hash} commit={commit} session={state.session} sendMsg={sendMsg} />)}
-    </Flex>
-  </ScrollArea>
+  const CommitTypeSelect = <SegmentedControl.Root size="1" value={commitSelectType} onValueChange={(value: CommitSelectType) => setCommitSelectType(value)}>
+    <SegmentedControl.Item value="commits">Commits</SegmentedControl.Item>
+    <SegmentedControl.Item value="tags">Tags</SegmentedControl.Item>
+  </SegmentedControl.Root>
+
+
+  const Commits = <Flex gridArea="commits" direction="column" justify="start">
+    {state.session?.branch && CommitTypeSelect}
+    <ScrollArea type="auto" scrollbars="vertical">
+      <Flex direction="column">
+        {
+          ((t: CommitSelectType) => {
+            switch (t) {
+              case "tags":
+                return state.tags.map((tag) => <Tag key={tag.name} tag={tag} session={state.session} sendMsg={sendMsg} />)
+              case "commits":
+                return state.commits.map((commit) => <Commit key={commit.short_hash} commit={commit} session={state.session} sendMsg={sendMsg} />)
+            }
+          })(commitSelectType)
+        }
+      </Flex>
+    </ScrollArea>
+  </Flex>
+
+
+
 
 
   const Ribbon = <Flex gridArea="ribbon" gap="4" justify="between" width="100%" align="center" p="2" wrap="wrap">
