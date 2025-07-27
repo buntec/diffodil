@@ -18,3 +18,4 @@ includes = [
   "*.scss",
   "*.ts",
 ]
+excludes = ["src/diffodil/statics/*"]
