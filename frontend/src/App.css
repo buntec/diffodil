@@ -1,5 +1,16 @@
+@import "@radix-ui/colors/blue-dark.css";
+
 .code-diff {
   white-space: pre-wrap;
+}
+
+.diff-line-number {
+  display: inline-block;
+  width: 2rem;
+}
+
+.diff-line:hover .diff-line-number {
+  background-color: var(--blue-6);
 }
 
 .AccordionChevron {

@@ -324,16 +324,31 @@ type FileDiffProps = {
 
 function FileDiff({ file }: FileDiffProps) {
   return (file && <Box>
-    {file.hunks.map((hunk, i) =>
-      <Box key={i}>
+    {file.hunks.map((hunk, i) => {
+      let k_new = 0;
+      let k_old = 0;
+      return <Box key={i}>
         <Code size="1">{hunk.header}</Code>
         <Flex direction="column">
-          {hunk.content.map((line, i) => <Code className="code-diff" size="1" wrap="wrap"
-            color={line.startsWith('-') ? 'red' : line.startsWith('+') ? 'green' : 'gray'} key={i}>
-            {line}
-          </Code>)}
+          {hunk.content.map((line, j) => {
+            const isDel = line.startsWith('-')
+            const isAdd = line.startsWith('+')
+
+            const diffLine = <Flex align="center" className="diff-line" key={j}>
+              <Code className="diff-line-number" color="gray" size="1">{isAdd ? '' : hunk.old_start + k_old}</Code>
+              <Code className="diff-line-number" color="gray" size="1">{isDel ? '' : hunk.new_start + k_new}</Code>
+              <Code className="code-diff" size="1" wrap="wrap" color={isDel ? 'red' : isAdd ? 'green' : 'gray'}>{line}</Code>
+            </Flex>
+
+            if (isDel) { k_old += 1 }
+            else if (isAdd) { k_new += 1 }
+            else { k_old += 1; k_new += 1 }
+
+            return diffLine;
+          })}
         </Flex>
       </Box>
+    }
     )}
   </Box>)
 }
@@ -456,7 +471,7 @@ function App() {
   const Commits = <Flex gridArea="commits" direction="column" justify="start" overflow="auto">
     {state.session?.branch && CommitTypeSelect}
     <ScrollArea type="auto" scrollbars="vertical">
-      <Flex direction="column">
+      <Flex direction="column" px="1">
         {
           ((t: CommitSelectType) => {
             switch (t) {
