@@ -412,6 +412,8 @@ async def get_commit_diff(
     if flags.ignore_all_space:
         cmd.append("--ignore-all-space")
 
+    cmd.append(commit)
+
     if paths:
         cmd.append("--")
         cmd.extend(paths)
@@ -568,7 +570,7 @@ async def git_diff_compact_summary(
         commit_b = commit_a
         commit_a = f"{commit_b}^"
 
-    cmd = ["git", "diff", "--compact-summary", commit_a, commit_b]
+    cmd = ["git", "diff", "--compact-summary", "--stat=10000000", commit_a, commit_b]
 
     proc = await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=repo
