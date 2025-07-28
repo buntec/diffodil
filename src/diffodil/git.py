@@ -108,8 +108,9 @@ class GitDiffSummary:
 def find_git_repos(root):
     git_repos = []
 
-    for dirpath, dirnames, _ in os.walk(root):
-        if ".git" in dirnames:
+    for dirpath, dirnames, filenames in os.walk(root):
+        # workspaces contain a `.git` file.
+        if ".git" in dirnames or ".git" in filenames:
             git_repos.append(dirpath)
             dirnames.clear()  # don't recurse into repos
 
