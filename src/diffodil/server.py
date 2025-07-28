@@ -448,6 +448,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 if state.repo:
                     await git_fetch(state.repo)
                     await send_repo_data(state.repo, state.branch)
+                    await send_diff_summary(state)
+                    state.open_paths = []
+                    ev_state_change.set()
             case MsgRepoSelect(repo):
                 if state.repo != repo:
                     state.commit_a = None
@@ -534,6 +537,12 @@ async def websocket_endpoint(websocket: WebSocket):
             ev_state_change.clear()
             await asyncio.sleep(0.1)  # debounce
 
+    async def periodic_refresh_loop():
+        while True:
+            await asyncio.sleep(3)
+            if not state.commit_a:
+                await send_diff_summary(state)
+
     # send in chunks with a maximum delay (in seconds)
     async def send_loop(max_chunk_size: int, max_delay: float):
         buffer = []
@@ -570,6 +579,7 @@ async def websocket_endpoint(websocket: WebSocket):
             tg.create_task(handle_client_msg_loop())
             tg.create_task(handle_state_changes_loop())
             tg.create_task(send_loop(max_chunk_size=100, max_delay=0.1))
+            tg.create_task(periodic_refresh_loop())
     except* Exception as e:
         logger.info(f"WS connection {uid} exception in task group: {e.exceptions}")
         await websocket.close(1011)
