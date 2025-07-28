@@ -378,7 +378,8 @@ function colorFromChangeType(change_type: string) {
 function Diff({ session, summary, diff, sendMsg }: DiffProps) {
   return (
     <ScrollArea type="auto" scrollbars="both">
-      <Box gridArea="diff" m="2">
+      <Flex gridArea="diff" direction="column" m="2">
+        <Text as="div" m="1" mb="2" color="gray">{`${summary.total_files_changed} files changed, ${summary.total_additions} insertions(+), ${summary.total_deletions} deletions(-)`}</Text>
         <Accordion.Root type="multiple"
           value={session.open_paths}
           onValueChange={(paths: string[]) => sendMsg({ type: 'set-open-paths', paths: paths })}
@@ -396,8 +397,10 @@ function Diff({ session, summary, diff, sendMsg }: DiffProps) {
                         <Text>{file.old_path ? `${file.old_path} => ${file.path}` : file.path}</Text>
                         <Text>({file.change_type})</Text>
                         {file.changes && <Text>{file.changes}</Text>}
-                        {file.additions != undefined && file.additions > 0 && <Code size="1" color="green">{'+'.repeat(file.additions)}</Code>}
-                        {file.deletions != undefined && file.deletions > 0 && <Code size="1" color="red" >{'-'.repeat(file.deletions)}</Code>}
+                        {file.additions != undefined && file.additions > 0 &&
+                          <Code size="1" color="green">{'+'.repeat(Math.min(file.additions, Math.ceil(100 * file.additions / summary.total_additions)))}</Code>}
+                        {file.deletions != undefined && file.deletions > 0 &&
+                          <Code size="1" color="red" >{'-'.repeat(Math.min(file.deletions, Math.ceil(100 * file.deletions / summary.total_deletions)))}</Code>}
                       </Button>
                       <ChevronDownIcon className="AccordionChevron" aria-hidden />
                     </Flex>
@@ -410,7 +413,7 @@ function Diff({ session, summary, diff, sendMsg }: DiffProps) {
             </Accordion.Item>
           )}
         </Accordion.Root>
-      </Box>
+      </Flex>
     </ScrollArea>
   )
 }
