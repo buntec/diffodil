@@ -172,6 +172,29 @@ def parse_git_tags(output: str) -> List[GitTag]:
     return tags
 
 
+async def git_fetch(repo: str, all: bool = True):
+    """Run `git fetch`."""
+
+    cmd = ["git", "fetch"]
+
+    if all:
+        cmd.append("--all")
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=repo,
+    )
+
+    _, stderr_b = await proc.communicate()
+
+    stderr = stderr_b.decode()
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"Git fetch failed: {stderr}")
+
+
 async def get_list_of_branches(repo: str) -> list[GitBranch]:
     """Run `git branch --list --all` and parse its output to get the list of all branches"""
 

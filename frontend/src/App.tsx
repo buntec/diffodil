@@ -1,6 +1,6 @@
 import { useState, useReducer } from 'react'
 import { Theme, SegmentedControl, ScrollArea, Callout, Switch, Select, IconButton, Badge, Box, Code, Blockquote, Grid, Flex, Text, Button } from "@radix-ui/themes";
-import { MoonIcon, ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
+import { UpdateIcon, MoonIcon, ExclamationTriangleIcon, ChevronDownIcon, WidthIcon, ResetIcon, Cross1Icon, PlusCircledIcon, MinusCircledIcon } from "@radix-ui/react-icons"
 import { Accordion, Toast } from "radix-ui";
 import { useWebSocket } from './WebSocket.tsx'
 import type { GitDiffAlgo, GitFlags, GitCommit, GitBranch, GitPartialDiff, GitTag, GitDiffFile, GitDiff, GitDiffSummary } from './Git.tsx'
@@ -460,6 +460,8 @@ function App() {
     </ScrollArea>
   </Flex>
 
+  const GitFetchButton = <Button variant="soft" size="1" onClick={() => sendMsg({ type: 'git-fetch' })}>Fetch<UpdateIcon /></Button>
+
   const Ribbon = <Flex gridArea="ribbon" gap="2" justify="between" align="center" p="2" wrap="wrap">
     <RepoSelect
       repo={state.session?.repo}
@@ -472,6 +474,9 @@ function App() {
         branches={state.branches}
         onBranchChange={(branch) => sendMsg({ type: "branch-select", branch: branch })}
       />
+    }
+    {
+      state.session && GitFetchButton
     }
     <CommitsSelect state={state} sendMsg={sendMsg} />
     {

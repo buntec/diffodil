@@ -31,6 +31,7 @@ from diffodil.git import (
     get_list_of_branches,
     get_list_of_tags,
     git_diff_compact_summary,
+    git_fetch,
 )
 from diffodil.utils import setup_logger
 
@@ -100,6 +101,11 @@ class MsgPong:
 class MsgHeartbeat:
     timestamp: int
     type: str = "heartbeat"
+
+
+@dataclass
+class MsgGitFetch:
+    type: str = "git-fetch"
 
 
 @dataclass
@@ -224,6 +230,7 @@ type MsgServer = (
 
 type MsgClient = (
     MsgGetDiff
+    | MsgGitFetch
     | MsgRepoSelect
     | MsgBranchSelect
     | MsgOpenPath
@@ -307,6 +314,8 @@ def decode_client_msg(msg: str) -> MsgClient:
             return MsgRepoSelect(repo)
         case {"type": "get-diff", "paths": paths}:
             return MsgGetDiff(paths)
+        case {"type": "git-fetch"}:
+            return MsgGitFetch()
         case {"type": "get-diff"}:
             return MsgGetDiff(None)
         case {"type": "branch-select", "branch": branch}:
@@ -423,6 +432,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 ev_state_change.set()
             case MsgGetDiff(paths):
                 await send_diff(paths, state)
+            case MsgGitFetch():
+                if state.repo:
+                    await git_fetch(state.repo)
+                    await send_repo_data(state.repo, state.branch)
             case MsgRepoSelect(repo):
                 if state.repo != repo:
                     state.commit_a = None
