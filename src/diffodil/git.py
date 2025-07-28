@@ -545,9 +545,15 @@ def parse_compact_summary_line(line: str) -> Optional[FileChange]:
     # Parse file path and detect change type
     if " => " in file_part:
         # Rename or copy
-        old_path, new_path = file_part.split(" => ", 1)
-        file_change.old_path = old_path.strip("{ ")
-        file_change.path = new_path.strip(" }")
+        lhs, rhs = file_part.split(" => ", 1)
+        if ("{" in lhs) and ("}" in rhs):
+            prefix, old_path = lhs.split("{", 1)
+            new_path, suffix = rhs.split("}", 1)
+            file_change.old_path = prefix + old_path.strip() + suffix
+            file_change.path = prefix + new_path.strip() + suffix
+        else:
+            file_change.old_path = lhs.strip()
+            file_change.path = rhs.strip()
         file_change.change_type = GitFileChangeType.RENAMED
     elif file_part.endswith(" (new)"):
         # New file

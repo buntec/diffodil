@@ -346,7 +346,7 @@ type DiffProps = {
   sendMsg: (msg: any) => void
 }
 
-function colorFromChangeType(change_type: string): "gold" | "red" | "green" | "blue" {
+function colorFromChangeType(change_type: string) {
   switch (change_type) {
     case "modified":
       return "gold"
@@ -354,13 +354,15 @@ function colorFromChangeType(change_type: string): "gold" | "red" | "green" | "b
       return "red"
     case "added":
       return "green"
+    case "renamed":
+      return "indigo"
   }
   return "blue";
 }
 
 function Diff({ session, summary, diff, sendMsg }: DiffProps) {
   return (
-    <ScrollArea type="auto" scrollbars="vertical">
+    <ScrollArea type="auto" scrollbars="both">
       <Box gridArea="diff" m="2">
         <Accordion.Root type="multiple"
           value={session.open_paths}
@@ -376,7 +378,7 @@ function Diff({ session, summary, diff, sendMsg }: DiffProps) {
                         variant="ghost"
                         color={colorFromChangeType(file.change_type)}
                         size="2">
-                        <Text>{file.path}</Text>
+                        <Text>{file.old_path ? `${file.old_path} => ${file.path}` : file.path}</Text>
                         <Text>({file.change_type})</Text>
                         {file.changes && <Text>{file.changes}</Text>}
                         {file.additions != undefined && file.additions > 0 && <Code size="1" color="green">{'+'.repeat(file.additions)}</Code>}
