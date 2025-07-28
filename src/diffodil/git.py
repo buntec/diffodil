@@ -122,10 +122,10 @@ def parse_git_branches(output: str) -> List[GitBranch]:
     for line in output.strip().splitlines():
         line = line.strip()
 
-        # Detect current branch (starts with '* ')
-        is_current = line.startswith("*")
-        if is_current:
-            line = line[2:].strip()
+        is_current = line.startswith("* ")
+
+        line = line.removeprefix("* ")  # current
+        line = line.removeprefix("+ ")  # worktree linked
 
         # Handle symbolic refs (e.g., remotes/origin/HEAD -> origin/main)
         if "->" in line:
