@@ -372,7 +372,16 @@ function Diff({ session, summary, diff, sendMsg }: DiffProps) {
                 <div>
                   <Accordion.Trigger className="AccordionTrigger" asChild >
                     <Flex direction="row" gap="1" px="2">
-                      <Button variant="ghost" color={colorFromChangeType(file.change_type)} size="2">{file.path} ({file.change_type}) </Button>
+                      <Button
+                        variant="ghost"
+                        color={colorFromChangeType(file.change_type)}
+                        size="2">
+                        <Text>{file.path}</Text>
+                        <Text>({file.change_type})</Text>
+                        {file.changes && <Text>{file.changes}</Text>}
+                        {file.additions != undefined && file.additions > 0 && <Code size="1" color="green">{'+'.repeat(file.additions)}</Code>}
+                        {file.deletions != undefined && file.deletions > 0 && <Code size="1" color="red" >{'-'.repeat(file.deletions)}</Code>}
+                      </Button>
                       <ChevronDownIcon className="AccordionChevron" aria-hidden />
                     </Flex>
                   </ Accordion.Trigger >
@@ -517,7 +526,7 @@ function App() {
           rows="min-content" areas={`"ribbon ribbon" "commits diff"`}>
           {Ribbon}
           {Commits}
-          {state.diffSummary && state.session?.commit_a &&
+          {state.session && state.diffSummary &&
             <Diff session={state.session} sendMsg={sendMsg} diff={state.diffPartial} summary={state.diffSummary} />}
         </Grid>
         <WSErrorToast open={wsError} setOpen={setWsError} />

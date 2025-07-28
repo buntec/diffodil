@@ -97,8 +97,8 @@ class FileChange:
 
 @dataclass
 class GitDiffSummary:
-    commit_a: str
-    commit_b: str
+    commit_a: str | None
+    commit_b: str | None
     files: List[FileChange]
     total_files_changed: int
     total_additions: int
@@ -314,8 +314,8 @@ def parse_hunk_header(header: str) -> tuple:
 
 async def get_git_diff(
     repo: str,
-    commit_a: str,
-    commit_b: str,
+    commit_a: str | None,
+    commit_b: str | None,
     flags: GitFlags,
     paths: list[str] | None = None,
 ) -> GitDiff:
@@ -335,12 +335,17 @@ async def get_git_diff(
     if flags.ignore_all_space:
         cmd.append("--ignore-all-space")
 
-    cmd.extend(
-        [
-            commit_a,
-            commit_b,
-        ]
-    )
+    if commit_a:
+        if not commit_b:
+            commit_b = commit_a
+            commit_a = f"{commit_b}^"
+
+        cmd.extend(
+            [
+                commit_a,
+                commit_b,
+            ]
+        )
 
     if paths:
         cmd.append("--")
@@ -540,8 +545,8 @@ def parse_compact_summary_line(line: str) -> Optional[FileChange]:
     if " => " in file_part:
         # Rename or copy
         old_path, new_path = file_part.split(" => ", 1)
-        file_change.old_path = old_path.strip()
-        file_change.path = new_path.strip()
+        file_change.old_path = old_path.strip("{ ")
+        file_change.path = new_path.strip(" }")
         file_change.change_type = GitFileChangeType.RENAMED
     elif file_part.endswith(" (new)"):
         # New file
@@ -585,15 +590,20 @@ def parse_compact_summary_line(line: str) -> Optional[FileChange]:
 
 
 async def git_diff_compact_summary(
-    repo: str, commit_a: str, commit_b: str | None
+    repo: str, commit_a: str | None, commit_b: str | None
 ) -> GitDiffSummary:
     """Run git diff --compact-summary for a given commit and return the parsed output."""
 
-    if not commit_b:
-        commit_b = commit_a
-        commit_a = f"{commit_b}^"
+    cmd = ["git", "diff", "--compact-summary", "--stat=10000000"]
 
-    cmd = ["git", "diff", "--compact-summary", "--stat=10000000", commit_a, commit_b]
+    if commit_a:
+        if not commit_b:
+            commit_b = commit_a
+            commit_a = f"{commit_b}^"
+
+        cmd.extend([commit_a, commit_b])
+
+    logger.debug(f"running command: {' '.join(cmd)}")
 
     proc = await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=repo

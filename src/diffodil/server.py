@@ -14,6 +14,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
+from watchfiles import awatch
 
 from diffodil.git import (
     Commit,
@@ -363,15 +364,16 @@ async def websocket_endpoint(websocket: WebSocket):
         await q_tx.put(MsgSessionState(state))
 
     async def send_diff_summary(state: SessionState):
-        if state.repo and state.commit_a and state.commit_b:
+        if state.repo and state.commit_a:
             diff = await git_diff_compact_summary(
                 state.repo,
                 state.commit_a,
                 state.commit_b,
             )
             await q_tx.put(MsgDiffSummary(diff))
-        elif state.repo and state.commit_a:
-            diff = await git_diff_compact_summary(state.repo, state.commit_a, None)
+        elif state.repo:
+            # diff relative to index
+            diff = await git_diff_compact_summary(state.repo, None, None)
             await q_tx.put(MsgDiffSummary(diff))
 
     async def send_diff(paths: list[str] | None, state: SessionState):
@@ -387,6 +389,16 @@ async def websocket_endpoint(websocket: WebSocket):
         elif state.repo and state.commit_a:
             diff = await get_commit_diff(
                 state.repo, state.commit_a, state.git_flags, paths
+            )
+            await q_tx.put(MsgDiff(diff, paths is not None))
+        elif state.repo:
+            # diff relative to index
+            diff = await get_git_diff(
+                state.repo,
+                None,
+                None,
+                state.git_flags,
+                paths,
             )
             await q_tx.put(MsgDiff(diff, paths is not None))
 
@@ -474,11 +486,26 @@ async def websocket_endpoint(websocket: WebSocket):
     async def send_init_data():
         await q_tx.put(MsgRepos(global_state.repos))
 
+    async def watch_for_changes(repo: str):
+        logger.info(f"watching repo {repo} for changes...")
+        async for changes in awatch(repo, recursive=True):
+            logger.info(f"change detected: {changes}")
+            await send_diff_summary(state)
+            if state.open_paths:
+                await send_diff(state.open_paths, state)
+
     async def handle_state_changes_loop():
+        watch_repo_task: asyncio.Task[None] | None = None
         while True:
             state_prev = copy.deepcopy(state)
             await ev_state_change.wait()
             await q_tx.put(MsgSessionState(state))
+
+            if state.repo and state.repo != state_prev.repo:
+                if watch_repo_task is not None:
+                    watch_repo_task.cancel()
+                if not state.commit_a:
+                    watch_repo_task = asyncio.create_task(watch_for_changes(state.repo))
 
             if (
                 (state.repo != state_prev.repo)
