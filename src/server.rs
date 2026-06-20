@@ -80,6 +80,7 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
     let handler_task = tokio::spawn(async move {
         let mut session = SessionState::default();
         let mut watcher_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let mut watched_repo: Option<String> = None;
 
         // Send initial data
         let _ = tx2
@@ -107,14 +108,17 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             if !session.open_paths.is_empty() {
                                 send_diff(Some(&session.open_paths), &session, &tx2).await;
                             }
-                        }
 
-                        // Restart file watcher if watching uncommitted changes
-                        if session.commit_a.is_none() {
-                            if let Some(ref repo) = session.repo {
+                            // Restart file watcher whenever the repo changes
+                            let need_new_watcher = match &watched_repo {
+                                Some(prev) => prev != repo,
+                                None => true,
+                            };
+                            if need_new_watcher {
                                 if let Some(h) = watcher_handle.take() {
                                     h.abort();
                                 }
+                                watched_repo = Some(repo.clone());
                                 let repo_path = repo.clone();
                                 let fctx = file_change_tx.clone();
                                 watcher_handle = Some(tokio::spawn(async move {
@@ -125,6 +129,9 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
                     }
                 }
                 Some(()) = file_change_rx.recv() => {
+                    if let Some(ref repo) = session.repo {
+                        send_repo_data(repo, session.branch.as_deref(), &session.git_flags, &tx2).await;
+                    }
                     send_diff_summary(&session, &tx2).await;
                     if !session.open_paths.is_empty() {
                         send_diff(Some(&session.open_paths), &session, &tx2).await;
