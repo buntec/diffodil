@@ -1,13 +1,8 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Rust
+/target
 
-# Virtual environments
-.venv
+# Frontend build output (embedded into binary)
+/frontend_dist
 
 # Logs
 logs
@@ -19,8 +14,6 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
-dist-ssr
 *.local
 
 # Editor directories and files
@@ -33,7 +26,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# pixi environments
-.pixi
-*.egg-info

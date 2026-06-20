@@ -7,16 +7,19 @@ init:
 build-frontend:
     bun run build
 
-build-backend:
-    uv build
+build-backend: build-frontend
+    cargo build --release
 
-build: build-frontend build-backend
+build: build-backend
+
+run *args:
+    cargo run --release -- {{ args }}
 
 run-frontend-dev *args:
     bun run dev --host {{ args }}
 
 run-backend-dev *args:
-    uv run diffodil -v {{ args }}
+    cargo run -- {{ args }}
 
 format:
     treefmt
