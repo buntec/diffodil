@@ -84,6 +84,7 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
         let _ = tx2
             .send(vec![ServerMsg::Repos {
                 repos: app_state.repos.clone(),
+                root: app_state.root.to_string_lossy().to_string(),
             }])
             .await;
 

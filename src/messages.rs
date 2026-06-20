@@ -33,7 +33,7 @@ impl Default for SessionState {
 pub enum ServerMsg {
     #[serde(rename = "session-state")]
     SessionState { state: SessionState },
-    Repos { repos: Vec<String> },
+    Repos { repos: Vec<String>, root: String },
     Branches { branches: Vec<GitBranch> },
     Tags { tags: Vec<GitTag> },
     Commits { commits: Vec<Commit> },

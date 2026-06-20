@@ -15,11 +15,18 @@ build: build-backend
 run *args:
     cargo run --release -- {{ args }}
 
+dev *args:
+    just run-frontend-dev & just run-backend-dev {{ args }}; kill %1
+
 run-frontend-dev *args:
     bun run dev --host {{ args }}
 
 run-backend-dev *args:
     cargo run -- {{ args }}
+
+kill-dev:
+    -pkill -f "cargo run --"
+    -pkill -f "bun run dev"
 
 format:
     treefmt

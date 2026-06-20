@@ -19,6 +19,7 @@ type SessionState = {
 
 type State = {
   repos: string[]
+  root?: string
   branches: GitBranch[]
   tags: GitTag[]
   commits: GitCommit[]
@@ -36,7 +37,7 @@ const reducer = (state: State, action: any): State => {
 
   switch (action.type) {
     case "repos":
-      return { ...state, repos: action.repos };
+      return { ...state, repos: action.repos, root: action.root };
     case "branches":
       return { ...state, branches: action.branches };
     case "tags":
@@ -111,17 +112,26 @@ function AppearanceSwitch({ appearance, setAppearance }: AppearanceSwitchProps) 
 
 type RepoSelectProps = {
   repos: string[]
+  root?: string
   repo?: string
   onRepoChange: (repo: string) => void
 }
 
-function RepoSelect({ repos, repo, onRepoChange }: RepoSelectProps) {
+function repoDisplayName(repo: string, root?: string): string {
+  if (root && repo.startsWith(root)) {
+    const relative = repo.slice(root.length).replace(/^\//, '')
+    return relative || repo
+  }
+  return repo
+}
+
+function RepoSelect({ repos, root, repo, onRepoChange }: RepoSelectProps) {
   return (
     <Select.Root size="2" onValueChange={onRepoChange} value={repo ? repo : ''}>
       <Select.Trigger variant="soft" placeholder="Select repo" />
       <Select.Content>
         {repos.map((repo) =>
-          <Select.Item key={repo} value={repo}>{repo}</Select.Item>
+          <Select.Item key={repo} value={repo}>{repoDisplayName(repo, root)}</Select.Item>
         )
         }
       </Select.Content>
@@ -494,6 +504,7 @@ function App() {
   const Ribbon = <Flex gridArea="ribbon" gap="2" justify="between" align="center" p="2" wrap="wrap">
     <RepoSelect
       repo={state.session?.repo}
+      root={state.root}
       repos={state.repos} onRepoChange={(repo) => sendMsg({ type: "repo-select", repo: repo })}
     />
     {
