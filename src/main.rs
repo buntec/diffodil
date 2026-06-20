@@ -98,10 +98,7 @@ async fn main() {
     let repos = find_git_repos(&root);
     info!("Found {} git repos under {}", repos.len(), root.display());
 
-    let app_state = Arc::new(AppState {
-        repos,
-        root,
-    });
+    let app_state = Arc::new(AppState { repos, root });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))

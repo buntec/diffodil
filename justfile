@@ -29,4 +29,5 @@ kill-dev:
     -pkill -f "bun run dev"
 
 format:
-    treefmt
+    cargo fmt
+    prettier --write frontend/src

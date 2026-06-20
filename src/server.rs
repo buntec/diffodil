@@ -11,15 +11,16 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::git::{
-    get_commit_diff, get_current_branch, get_git_diff, get_git_log, get_list_of_branches,
-    get_list_of_tags, git_diff_compact_summary, git_fetch, GitFlags,
+    GitFlags, RepoEntry, get_commit_diff, get_current_branch, get_git_diff, get_git_log,
+    get_list_of_branches, get_list_of_tags, get_untracked_files, git_diff_compact_summary,
+    git_fetch, read_untracked_file,
 };
 use crate::messages::{ClientMsg, ServerMsg, SessionState};
 
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct AppState {
-    pub repos: Vec<String>,
+    pub repos: Vec<RepoEntry>,
     pub root: PathBuf,
 }
 
@@ -271,6 +272,19 @@ async fn handle_client_msg(
             session.git_flags.diff_algo = algo;
             true
         }
+        ClientMsg::GetUntrackedContent { path } => {
+            if let Some(ref repo) = session.repo {
+                let result = read_untracked_file(repo, &path);
+                let _ = tx
+                    .send(vec![ServerMsg::UntrackedContent {
+                        path,
+                        content: result.content,
+                        is_binary: result.is_binary,
+                    }])
+                    .await;
+            }
+            false
+        }
     }
 }
 
@@ -303,19 +317,31 @@ async fn send_diff_summary(session: &SessionState, tx: &mpsc::Sender<Vec<ServerM
         return;
     };
 
-    let result = if session.commit_a.is_some() {
-        git_diff_compact_summary(
+    if session.commit_a.is_some() {
+        let result = git_diff_compact_summary(
             repo,
             session.commit_a.as_deref(),
             session.commit_b.as_deref(),
+            false,
         )
-        .await
+        .await;
+        if let Ok(summary) = result {
+            let _ = tx.send(vec![ServerMsg::DiffSummary { summary }]).await;
+        }
     } else {
-        git_diff_compact_summary(repo, None, None).await
-    };
-
-    if let Ok(summary) = result {
-        let _ = tx.send(vec![ServerMsg::DiffSummary { summary }]).await;
+        let mut msgs = Vec::new();
+        if let Ok(summary) = git_diff_compact_summary(repo, None, None, false).await {
+            msgs.push(ServerMsg::DiffSummary { summary });
+        }
+        if let Ok(summary) = git_diff_compact_summary(repo, None, None, true).await {
+            msgs.push(ServerMsg::StagedSummary { summary });
+        }
+        if let Ok(files) = get_untracked_files(repo).await {
+            msgs.push(ServerMsg::UntrackedFiles { files });
+        }
+        if !msgs.is_empty() {
+            let _ = tx.send(msgs).await;
+        }
     }
 }
 
@@ -330,16 +356,33 @@ async fn send_diff(
 
     let partial = paths.is_some();
 
-    let result = match (&session.commit_a, &session.commit_b) {
+    match (&session.commit_a, &session.commit_b) {
         (Some(a), Some(b)) => {
-            get_git_diff(repo, Some(a), Some(b), &session.git_flags, paths).await
+            if let Ok(diff) =
+                get_git_diff(repo, Some(a), Some(b), &session.git_flags, paths, false).await
+            {
+                let _ = tx.send(vec![ServerMsg::Diff { diff, partial }]).await;
+            }
         }
-        (Some(a), None) => get_commit_diff(repo, a, &session.git_flags, paths).await,
-        _ => get_git_diff(repo, None, None, &session.git_flags, paths).await,
-    };
-
-    if let Ok(diff) = result {
-        let _ = tx.send(vec![ServerMsg::Diff { diff, partial }]).await;
+        (Some(a), None) => {
+            if let Ok(diff) = get_commit_diff(repo, a, &session.git_flags, paths).await {
+                let _ = tx.send(vec![ServerMsg::Diff { diff, partial }]).await;
+            }
+        }
+        _ => {
+            let mut msgs = Vec::new();
+            if let Ok(diff) = get_git_diff(repo, None, None, &session.git_flags, paths, false).await
+            {
+                msgs.push(ServerMsg::Diff { diff, partial });
+            }
+            if let Ok(diff) = get_git_diff(repo, None, None, &session.git_flags, paths, true).await
+            {
+                msgs.push(ServerMsg::StagedDiff { diff, partial });
+            }
+            if !msgs.is_empty() {
+                let _ = tx.send(msgs).await;
+            }
+        }
     }
 }
 

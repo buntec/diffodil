@@ -128,10 +128,111 @@ pub struct GitDiffSummary {
     pub total_deletions: u32,
 }
 
-pub fn find_git_repos(root: &Path) -> Vec<String> {
-    let mut repos = Vec::new();
-    find_git_repos_recursive(root, &mut repos);
-    repos
+pub fn find_git_repos(root: &Path) -> Vec<RepoEntry> {
+    let mut paths = Vec::new();
+    find_git_repos_recursive(root, &mut paths);
+    group_repos_by_worktree(&paths)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Worktree {
+    pub path: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoEntry {
+    pub path: String,
+    pub worktrees: Vec<Worktree>,
+}
+
+fn get_worktrees(repo_path: &str) -> Vec<Worktree> {
+    let output = std::process::Command::new("git")
+        .arg("worktree")
+        .arg("list")
+        .arg("--porcelain")
+        .current_dir(repo_path)
+        .output();
+
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        _ => return Vec::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut worktrees = Vec::new();
+    let mut current_path: Option<String> = None;
+    let mut current_branch: Option<String> = None;
+
+    for line in stdout.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            if let Some(prev_path) = current_path.take() {
+                worktrees.push(Worktree {
+                    path: prev_path,
+                    branch: current_branch.take(),
+                });
+            }
+            current_path = Some(path.to_string());
+            current_branch = None;
+        } else if let Some(branch) = line.strip_prefix("branch refs/heads/") {
+            current_branch = Some(branch.to_string());
+        }
+    }
+    if let Some(path) = current_path {
+        worktrees.push(Worktree {
+            path,
+            branch: current_branch,
+        });
+    }
+
+    worktrees
+}
+
+fn group_repos_by_worktree(paths: &[String]) -> Vec<RepoEntry> {
+    use std::collections::HashSet;
+
+    let path_set: HashSet<&str> = paths.iter().map(|s| s.as_str()).collect();
+    let mut claimed: HashSet<&str> = HashSet::new();
+    let mut entries: Vec<RepoEntry> = Vec::new();
+
+    for path in paths {
+        if claimed.contains(path.as_str()) {
+            continue;
+        }
+
+        let worktrees = get_worktrees(path);
+
+        // The first entry from `git worktree list` is always the main worktree
+        let main_path = worktrees
+            .first()
+            .map(|wt| wt.path.clone())
+            .unwrap_or_else(|| path.clone());
+
+        let relevant: Vec<Worktree> = worktrees
+            .into_iter()
+            .filter(|wt| path_set.contains(wt.path.as_str()))
+            .collect();
+
+        if relevant.len() <= 1 {
+            entries.push(RepoEntry {
+                path: path.clone(),
+                worktrees: Vec::new(),
+            });
+        } else {
+            for wt in &relevant {
+                if let Some(p) = paths.iter().find(|p| **p == wt.path) {
+                    claimed.insert(p.as_str());
+                }
+            }
+
+            entries.push(RepoEntry {
+                path: main_path,
+                worktrees: relevant,
+            });
+        }
+    }
+
+    entries
 }
 
 fn find_git_repos_recursive(dir: &Path, repos: &mut Vec<String>) {
@@ -410,7 +511,9 @@ fn parse_diff_output(stdout: &str) -> Vec<DiffFile> {
                 file.change_type = "deleted".to_string();
             }
         } else if (line.starts_with("--- ") || line.starts_with("+++ "))
-            && current_file.as_ref().is_some_and(|f| f.file_path.is_empty())
+            && current_file
+                .as_ref()
+                .is_some_and(|f| f.file_path.is_empty())
         {
             if let Some(ref mut file) = current_file {
                 if let Some(path) = line.strip_prefix("+++ b/") {
@@ -467,6 +570,7 @@ pub async fn get_git_diff(
     commit_b: Option<&str>,
     flags: &GitFlags,
     paths: Option<&[String]>,
+    cached: bool,
 ) -> Result<GitDiff, String> {
     let mut cmd = Command::new("git");
     cmd.args([
@@ -479,6 +583,10 @@ pub async fn get_git_diff(
         &format!("--diff-algorithm={}", flags.diff_algo),
     ])
     .current_dir(repo);
+
+    if cached {
+        cmd.arg("--cached");
+    }
 
     if flags.ignore_all_space {
         cmd.arg("--ignore-all-space");
@@ -605,8 +713,7 @@ pub fn parse_compact_summary_line(line: &str) -> Option<FileChange> {
         if lhs.contains('{') && rhs.contains('}') {
             let (prefix, old_path) = lhs.split_once('{').unwrap();
             let (new_path, suffix) = rhs.split_once('}').unwrap();
-            file_change.old_path =
-                Some(format!("{}{}{}", prefix, old_path.trim(), suffix));
+            file_change.old_path = Some(format!("{}{}{}", prefix, old_path.trim(), suffix));
             file_change.path = format!("{}{}{}", prefix, new_path.trim(), suffix);
         } else {
             file_change.old_path = Some(lhs.trim().to_string());
@@ -646,10 +753,15 @@ pub async fn git_diff_compact_summary(
     repo: &str,
     commit_a: Option<&str>,
     commit_b: Option<&str>,
+    cached: bool,
 ) -> Result<GitDiffSummary, String> {
     let mut cmd = Command::new("git");
     cmd.args(["diff", "--compact-summary", "--stat=10000000"])
         .current_dir(repo);
+
+    if cached {
+        cmd.arg("--cached");
+    }
 
     let (effective_a, effective_b) = match (commit_a, commit_b) {
         (Some(a), Some(b)) => (Some(a.to_string()), Some(b.to_string())),
@@ -703,4 +815,61 @@ pub async fn git_diff_compact_summary(
         total_additions,
         total_deletions,
     })
+}
+
+pub struct UntrackedFileContent {
+    pub content: Option<String>,
+    pub is_binary: bool,
+}
+
+pub fn read_untracked_file(repo: &str, path: &str) -> UntrackedFileContent {
+    let full_path = Path::new(repo).join(path);
+    match std::fs::read(&full_path) {
+        Ok(bytes) => {
+            if bytes.iter().take(8000).any(|&b| b == 0) {
+                UntrackedFileContent {
+                    content: None,
+                    is_binary: true,
+                }
+            } else {
+                match String::from_utf8(bytes) {
+                    Ok(s) => UntrackedFileContent {
+                        content: Some(s),
+                        is_binary: false,
+                    },
+                    Err(_) => UntrackedFileContent {
+                        content: None,
+                        is_binary: true,
+                    },
+                }
+            }
+        }
+        Err(_) => UntrackedFileContent {
+            content: None,
+            is_binary: false,
+        },
+    }
+}
+
+pub async fn get_untracked_files(repo: &str) -> Result<Vec<String>, String> {
+    let output = Command::new("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .current_dir(repo)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run git ls-files: {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "git ls-files failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect())
 }

@@ -17,8 +17,23 @@ type SessionState = {
   git_flags: GitFlags;
 }
 
+type Worktree = {
+  path: string
+  branch?: string
+}
+
+type RepoEntry = {
+  path: string
+  worktrees: Worktree[]
+}
+
+type UntrackedContent = {
+  content: string | null
+  is_binary: boolean
+}
+
 type State = {
-  repos: string[]
+  repos: RepoEntry[]
   root?: string
   branches: GitBranch[]
   tags: GitTag[]
@@ -26,7 +41,11 @@ type State = {
   session?: SessionState
   diff?: GitDiff
   diffSummary?: GitDiffSummary
+  stagedSummary?: GitDiffSummary
+  untrackedFiles?: string[]
+  untrackedContents: Map<string, UntrackedContent>
   diffPartial?: GitPartialDiff
+  stagedDiffPartial?: GitPartialDiff
 }
 
 const reducer = (state: State, action: any): State => {
@@ -46,7 +65,7 @@ const reducer = (state: State, action: any): State => {
       return { ...state, commits: action.commits };
     case "session-state":
       if (state.session?.branch !== action.state.branch || state.session?.commit_a != action.state.commit_a || state.session?.commit_b != action.state.commit_b) {
-        return { ...state, session: action.state, diffPartial: undefined };
+        return { ...state, session: action.state, diffPartial: undefined, stagedDiffPartial: undefined, stagedSummary: undefined, untrackedFiles: undefined, untrackedContents: new Map() };
       }
       return { ...state, session: action.state }
     case "diff":
@@ -67,6 +86,31 @@ const reducer = (state: State, action: any): State => {
       return { ...state, diff: action.diff };
     case "diff-summary":
       return { ...state, diffSummary: action.summary };
+    case "staged-diff":
+      if (action.partial) {
+        if (state.stagedDiffPartial) {
+          const diff: GitPartialDiff = { ...state.stagedDiffPartial }
+          const files = new Map(diff.files)
+          action.diff.files.forEach((file: GitDiffFile) => {
+            files.set(file.file_path, file)
+          })
+          diff.files = files
+          return { ...state, stagedDiffPartial: diff };
+        }
+        const kvs = action.diff?.files?.map((file: GitDiffFile) => [file.file_path, file])
+        const files: Map<string, GitDiffFile> = new Map([...kvs])
+        return { ...state, stagedDiffPartial: { from_commit: action.diff.from_commit, to_commit: action.diff.to_commit, files: files } };
+      }
+      return { ...state };
+    case "staged-summary":
+      return { ...state, stagedSummary: action.summary };
+    case "untracked-files":
+      return { ...state, untrackedFiles: action.files };
+    case "untracked-content": {
+      const contents = new Map(state.untrackedContents)
+      contents.set(action.path, { content: action.content, is_binary: action.is_binary })
+      return { ...state, untrackedContents: contents };
+    }
   }
 
   console.warn(`unknown action type: ${action.type}`)
@@ -111,18 +155,18 @@ function AppearanceSwitch({ appearance, setAppearance }: AppearanceSwitchProps) 
 
 
 type RepoSelectProps = {
-  repos: string[]
+  repos: RepoEntry[]
   root?: string
   repo?: string
   onRepoChange: (repo: string) => void
 }
 
-function repoDisplayName(repo: string, root?: string): string {
-  if (root && repo.startsWith(root)) {
-    const relative = repo.slice(root.length).replace(/^\//, '')
-    return relative || repo
+function displayPath(fullPath: string, root?: string): string {
+  if (root && fullPath.startsWith(root)) {
+    const relative = fullPath.slice(root.length).replace(/^\//, '')
+    return relative || fullPath
   }
-  return repo
+  return fullPath
 }
 
 function RepoSelect({ repos, root, repo, onRepoChange }: RepoSelectProps) {
@@ -130,10 +174,18 @@ function RepoSelect({ repos, root, repo, onRepoChange }: RepoSelectProps) {
     <Select.Root size="2" onValueChange={onRepoChange} value={repo ? repo : ''}>
       <Select.Trigger variant="soft" placeholder="Select repo" />
       <Select.Content>
-        {repos.map((repo) =>
-          <Select.Item key={repo} value={repo}>{repoDisplayName(repo, root)}</Select.Item>
-        )
-        }
+        {repos.map((entry) =>
+          entry.worktrees.length === 0
+            ? <Select.Item key={entry.path} value={entry.path}>{displayPath(entry.path, root)}</Select.Item>
+            : <Select.Group key={entry.path}>
+                <Select.Label>{displayPath(entry.path, root)}</Select.Label>
+                {entry.worktrees.map((wt) =>
+                  <Select.Item key={wt.path} value={wt.path} style={{ paddingLeft: 'calc(var(--select-item-indicator-width) + 12px)' }}>
+                    {wt.branch || displayPath(wt.path, root)}
+                  </Select.Item>
+                )}
+              </Select.Group>
+        )}
       </Select.Content>
     </Select.Root>
   )
@@ -367,7 +419,11 @@ function FileDiff({ file }: FileDiffProps) {
 type DiffProps = {
   session: SessionState
   diff?: GitPartialDiff
+  stagedDiff?: GitPartialDiff
   summary: GitDiffSummary
+  stagedSummary?: GitDiffSummary
+  untrackedFiles?: string[]
+  untrackedContents: Map<string, UntrackedContent>
   sendMsg: (msg: any) => void
 }
 
@@ -385,44 +441,160 @@ function colorFromChangeType(change_type: string) {
   return "blue";
 }
 
-function Diff({ session, summary, diff, sendMsg }: DiffProps) {
+type DiffSectionProps = {
+  title: string
+  color: "gray" | "cyan" | "gold" | "red" | "green" | "orange"
+  summary: GitDiffSummary
+  diff?: GitPartialDiff
+  session: SessionState
+  sendMsg: (msg: any) => void
+}
+
+function DiffSection({ title, color, summary, diff, session, sendMsg }: DiffSectionProps) {
+  if (summary.files.length === 0) return null;
+  return (
+    <Flex direction="column" mb="3">
+      <Text as="div" m="1" mb="1" size="2" weight="bold" color={color}>{title}</Text>
+      <Text as="div" mx="1" mb="2" size="1" color="gray">{`${summary.total_files_changed} files, +${summary.total_additions} -${summary.total_deletions}`}</Text>
+      <Accordion.Root type="multiple"
+        value={session.open_paths}
+        onValueChange={(paths: string[]) => sendMsg({ type: 'set-open-paths', paths: paths })}
+        className="AccordionRoot" >
+        {summary.files.map((file, i) =>
+          <Accordion.Item key={i} value={file.path} className="AccordionItem">
+            <Accordion.Header className="AccordionHeader" asChild>
+              <div>
+                <Accordion.Trigger className="AccordionTrigger" asChild >
+                  <Flex direction="row" gap="1" px="2">
+                    <Button
+                      variant="ghost"
+                      color={colorFromChangeType(file.change_type)}
+                      size="2">
+                      <Text>{file.old_path ? `${file.old_path} => ${file.path}` : file.path}</Text>
+                      <Text>({file.change_type})</Text>
+                      {file.changes && <Text>{file.changes}</Text>}
+                      {file.additions != undefined && file.additions > 0 &&
+                        <Code size="1" color="green">{'+'.repeat(Math.min(file.additions, Math.ceil(100 * file.additions / summary.total_additions)))}</Code>}
+                      {file.deletions != undefined && file.deletions > 0 &&
+                        <Code size="1" color="red" >{'-'.repeat(Math.min(file.deletions, Math.ceil(100 * file.deletions / summary.total_deletions)))}</Code>}
+                    </Button>
+                    <ChevronDownIcon className="AccordionChevron" aria-hidden />
+                  </Flex>
+                </ Accordion.Trigger >
+              </div>
+            </Accordion.Header>
+            <Accordion.Content >
+              {diff && <FileDiff file={diff.files.get(file.path)} />}
+            </Accordion.Content >
+          </Accordion.Item>
+        )}
+      </Accordion.Root>
+    </Flex>
+  )
+}
+
+function Diff({ session, summary, stagedSummary, stagedDiff, untrackedFiles, untrackedContents, diff, sendMsg }: DiffProps) {
+  const isWorkingTree = !session.commit_a;
+  const [openUntracked, setOpenUntracked] = useState<string[]>([]);
   return (
     <ScrollArea type="auto" scrollbars="both">
       <Flex gridArea="diff" direction="column" m="2">
-        <Text as="div" m="1" mb="2" color="gray">{`${summary.total_files_changed} files changed, ${summary.total_additions} insertions(+), ${summary.total_deletions} deletions(-)`}</Text>
-        <Accordion.Root type="multiple"
-          value={session.open_paths}
-          onValueChange={(paths: string[]) => sendMsg({ type: 'set-open-paths', paths: paths })}
-          className="AccordionRoot" >
-          {summary.files.map((file, i) =>
-            <Accordion.Item key={i} value={file.path} className="AccordionItem">
-              <Accordion.Header className="AccordionHeader" asChild>
-                <div>
-                  <Accordion.Trigger className="AccordionTrigger" asChild >
-                    <Flex direction="row" gap="1" px="2">
-                      <Button
-                        variant="ghost"
-                        color={colorFromChangeType(file.change_type)}
-                        size="2">
-                        <Text>{file.old_path ? `${file.old_path} => ${file.path}` : file.path}</Text>
-                        <Text>({file.change_type})</Text>
-                        {file.changes && <Text>{file.changes}</Text>}
-                        {file.additions != undefined && file.additions > 0 &&
-                          <Code size="1" color="green">{'+'.repeat(Math.min(file.additions, Math.ceil(100 * file.additions / summary.total_additions)))}</Code>}
-                        {file.deletions != undefined && file.deletions > 0 &&
-                          <Code size="1" color="red" >{'-'.repeat(Math.min(file.deletions, Math.ceil(100 * file.deletions / summary.total_deletions)))}</Code>}
-                      </Button>
-                      <ChevronDownIcon className="AccordionChevron" aria-hidden />
-                    </Flex>
-                  </ Accordion.Trigger >
-                </div>
-              </Accordion.Header>
-              <Accordion.Content >
-                {diff && <FileDiff file={diff.files.get(file.path)} />}
-              </Accordion.Content >
-            </Accordion.Item>
-          )}
-        </Accordion.Root>
+        {isWorkingTree ? (
+          <>
+            <DiffSection title="Unstaged Changes" color="gold" summary={summary} diff={diff} session={session} sendMsg={sendMsg} />
+            {stagedSummary && <DiffSection title="Staged Changes" color="green" summary={stagedSummary} diff={stagedDiff} session={session} sendMsg={sendMsg} />}
+            {untrackedFiles && untrackedFiles.length > 0 && (
+              <Flex direction="column" mb="3">
+                <Text as="div" m="1" mb="1" size="2" weight="bold" color="gray">Untracked Files</Text>
+                <Text as="div" mx="1" mb="2" size="1" color="gray">{`${untrackedFiles.length} files`}</Text>
+                <Accordion.Root type="multiple"
+                  value={openUntracked}
+                  onValueChange={(paths: string[]) => {
+                    const newlyOpened = paths.filter(p => !openUntracked.includes(p))
+                    newlyOpened.forEach(p => {
+                      if (!untrackedContents.has(p)) {
+                        sendMsg({ type: 'get-untracked-content', path: p })
+                      }
+                    })
+                    setOpenUntracked(paths)
+                  }}
+                  className="AccordionRoot">
+                  {untrackedFiles.map((file) =>
+                    <Accordion.Item key={file} value={file} className="AccordionItem">
+                      <Accordion.Header className="AccordionHeader" asChild>
+                        <div>
+                          <Accordion.Trigger className="AccordionTrigger" asChild>
+                            <Flex direction="row" gap="1" px="2">
+                              <Button variant="ghost" color="gray" size="2">
+                                <Text>{file}</Text>
+                              </Button>
+                              <ChevronDownIcon className="AccordionChevron" aria-hidden />
+                            </Flex>
+                          </Accordion.Trigger>
+                        </div>
+                      </Accordion.Header>
+                      <Accordion.Content>
+                        {(() => {
+                          const entry = untrackedContents.get(file)
+                          if (!entry) return <Text size="1" color="gray">Loading...</Text>
+                          if (entry.is_binary) return <Text size="1" color="gray">(binary file)</Text>
+                          if (entry.content == null) return <Text size="1" color="gray">(unable to read)</Text>
+                          return (
+                            <Flex direction="column">
+                              {entry.content.split('\n').map((line, i) =>
+                                <Flex align="center" className="diff-line" key={i}>
+                                  <Code className="diff-line-number" color="gray" size="1">{i + 1}</Code>
+                                  <Code className="code-diff" size="1" wrap="wrap" color="gray">{line}</Code>
+                                </Flex>
+                              )}
+                            </Flex>
+                          )
+                        })()}
+                      </Accordion.Content>
+                    </Accordion.Item>
+                  )}
+                </Accordion.Root>
+              </Flex>
+            )}
+          </>
+        ) : (
+          <>
+            <Text as="div" m="1" mb="2" color="gray">{`${summary.total_files_changed} files changed, ${summary.total_additions} insertions(+), ${summary.total_deletions} deletions(-)`}</Text>
+            <Accordion.Root type="multiple"
+              value={session.open_paths}
+              onValueChange={(paths: string[]) => sendMsg({ type: 'set-open-paths', paths: paths })}
+              className="AccordionRoot" >
+              {summary.files.map((file, i) =>
+                <Accordion.Item key={i} value={file.path} className="AccordionItem">
+                  <Accordion.Header className="AccordionHeader" asChild>
+                    <div>
+                      <Accordion.Trigger className="AccordionTrigger" asChild >
+                        <Flex direction="row" gap="1" px="2">
+                          <Button
+                            variant="ghost"
+                            color={colorFromChangeType(file.change_type)}
+                            size="2">
+                            <Text>{file.old_path ? `${file.old_path} => ${file.path}` : file.path}</Text>
+                            <Text>({file.change_type})</Text>
+                            {file.changes && <Text>{file.changes}</Text>}
+                            {file.additions != undefined && file.additions > 0 &&
+                              <Code size="1" color="green">{'+'.repeat(Math.min(file.additions, Math.ceil(100 * file.additions / summary.total_additions)))}</Code>}
+                            {file.deletions != undefined && file.deletions > 0 &&
+                              <Code size="1" color="red" >{'-'.repeat(Math.min(file.deletions, Math.ceil(100 * file.deletions / summary.total_deletions)))}</Code>}
+                          </Button>
+                          <ChevronDownIcon className="AccordionChevron" aria-hidden />
+                        </Flex>
+                      </ Accordion.Trigger >
+                    </div>
+                  </Accordion.Header>
+                  <Accordion.Content >
+                    {diff && <FileDiff file={diff.files.get(file.path)} />}
+                  </Accordion.Content >
+                </Accordion.Item>
+              )}
+            </Accordion.Root>
+          </>
+        )}
       </Flex>
     </ScrollArea>
   )
@@ -458,7 +630,7 @@ type AppearanceType = "light" | "dark"
 const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 
 function App() {
-  const [state, dispatch] = useReducer<State, any>(reducer, { repos: [], branches: [], tags: [], commits: [] });
+  const [state, dispatch] = useReducer<State, any>(reducer, { repos: [], branches: [], tags: [], commits: [], untrackedContents: new Map() });
   const [wsError, setWsError] = useState<boolean>(false);
   const [commitSelectType, setCommitSelectType] = useState<CommitSelectType>("commits");
   const [appearance, setAppearance] = useState<AppearanceType>("light")
@@ -558,7 +730,7 @@ function App() {
           {Ribbon}
           {Commits}
           {state.session && state.diffSummary &&
-            <Diff session={state.session} sendMsg={sendMsg} diff={state.diffPartial} summary={state.diffSummary} />}
+            <Diff session={state.session} sendMsg={sendMsg} diff={state.diffPartial} stagedDiff={state.stagedDiffPartial} summary={state.diffSummary} stagedSummary={state.stagedSummary} untrackedFiles={state.untrackedFiles} untrackedContents={state.untrackedContents} />}
         </Grid>
         <WSErrorToast open={wsError} setOpen={setWsError} />
         <Toast.Viewport />
