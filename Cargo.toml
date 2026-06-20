@@ -1,6 +1,6 @@
 [package]
 name = "diffodil"
-version = "0.1.0"
+version = "0.0.2"
 edition = "2024"
 description = "Git diffs in your browser"
 
@@ -18,3 +18,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
 mime_guess = "2"
+libc = "0.2"

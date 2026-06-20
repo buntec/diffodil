@@ -1,6 +1,7 @@
 mod git;
 mod messages;
 mod server;
+mod service;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use axum::Router;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use rust_embed::Embed;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -24,8 +25,11 @@ struct Assets;
 #[derive(Parser)]
 #[command(name = "diffodil", about = "Git diffs in your browser")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
     /// Only git repos below the root will be considered
-    root: String,
+    root: Option<String>,
 
     /// The port on which the server will listen
     #[arg(short, long, default_value_t = 8765)]
@@ -34,6 +38,25 @@ struct Cli {
     /// Increase verbosity
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Install diffodil as a background service (launchd on macOS)
+    Install {
+        /// Root directory to watch
+        root: String,
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 8765)]
+        port: u16,
+        /// Print the generated plist to stdout instead of installing
+        #[arg(long)]
+        print: bool,
+    },
+    /// Uninstall the background service
+    Uninstall,
+    /// Restart the background service
+    Restart,
 }
 
 async fn serve_embedded_file(path: &str) -> Response {
@@ -53,18 +76,15 @@ async fn serve_embedded_file(path: &str) -> Response {
             )
                 .into_response()
         }
-        None => {
-            // SPA fallback: serve index.html for all non-asset routes
-            match Assets::get("index.html") {
-                Some(content) => (
-                    StatusCode::OK,
-                    [(header::CONTENT_TYPE, "text/html".to_string())],
-                    content.data.into_owned(),
-                )
-                    .into_response(),
-                None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
-            }
-        }
+        None => match Assets::get("index.html") {
+            Some(content) => (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "text/html".to_string())],
+                content.data.into_owned(),
+            )
+                .into_response(),
+            None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+        },
     }
 }
 
@@ -80,6 +100,28 @@ async fn index_handler() -> Response {
 async fn main() {
     let cli = Cli::parse();
 
+    match cli.command {
+        Some(Command::Install { root, port, print }) => {
+            service::install(&PathBuf::from(&root), port, print);
+            return;
+        }
+        Some(Command::Uninstall) => {
+            service::uninstall();
+            return;
+        }
+        Some(Command::Restart) => {
+            service::restart();
+            return;
+        }
+        None => {}
+    }
+
+    let root_arg = cli.root.unwrap_or_else(|| {
+        eprintln!("Error: a root directory is required when running the server");
+        eprintln!("Usage: diffodil <ROOT> [--port <PORT>]");
+        std::process::exit(1);
+    });
+
     let filter = match cli.verbose {
         0 => "warn",
         1 => "info",
@@ -90,8 +132,8 @@ async fn main() {
         .with_env_filter(EnvFilter::new(filter))
         .init();
 
-    let root = PathBuf::from(&cli.root).canonicalize().unwrap_or_else(|_| {
-        eprintln!("Error: path '{}' does not exist", cli.root);
+    let root = PathBuf::from(&root_arg).canonicalize().unwrap_or_else(|_| {
+        eprintln!("Error: path '{}' does not exist", root_arg);
         std::process::exit(1);
     });
 
