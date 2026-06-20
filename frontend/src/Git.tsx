@@ -1,6 +1,11 @@
-export type GitDiffAlgo = "myers" | "minimal" | "patience" | "histogram"
+export type GitDiffAlgo = 'myers' | 'minimal' | 'patience' | 'histogram'
 
-export type GitFileChangeType = "added" | "deleted" | "modified" | "renamed" | "copied"
+export type GitFileChangeType =
+  | 'added'
+  | 'deleted'
+  | 'modified'
+  | 'renamed'
+  | 'copied'
 
 export type GitFlags = {
   max_count: number

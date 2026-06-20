@@ -30,4 +30,4 @@ kill-dev:
 
 format:
     cargo fmt
-    prettier --write frontend/src
+    bunx prettier --write frontend/src
