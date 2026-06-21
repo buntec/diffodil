@@ -82,6 +82,7 @@ type State = {
   untrackedContents: Map<string, UntrackedContent>
   diffPartial?: GitPartialDiff
   stagedDiffPartial?: GitPartialDiff
+  notification?: string | null
 }
 
 const reducer = (state: State, action: any): State => {
@@ -187,6 +188,8 @@ const reducer = (state: State, action: any): State => {
       })
       return { ...state, untrackedContents: contents }
     }
+    case 'notification':
+      return { ...state, notification: action.message }
   }
 
   console.warn(`unknown action type: ${action.type}`)
@@ -1201,9 +1204,26 @@ function App() {
           height="100vh"
           overflow="hidden"
           columns="minmax(auto, 1fr) 3fr"
-          rows="min-content"
-          areas={`"ribbon ribbon" "commits diff"`}
+          rows={state.notification ? 'auto min-content 1fr' : 'min-content 1fr'}
+          areas={
+            state.notification
+              ? `"notification notification" "ribbon ribbon" "commits diff"`
+              : `"ribbon ribbon" "commits diff"`
+          }
         >
+          {state.notification && (
+            <Callout.Root
+              style={{ gridArea: 'notification' }}
+              variant="soft"
+              color="blue"
+              size="1"
+            >
+              <Callout.Icon>
+                <UpdateIcon className="spinning" />
+              </Callout.Icon>
+              <Callout.Text>{state.notification}</Callout.Text>
+            </Callout.Root>
+          )}
           {Ribbon}
           {Commits}
           {state.session && state.diffSummary && (

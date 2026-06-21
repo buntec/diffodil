@@ -1,5 +1,18 @@
 @import '@radix-ui/colors/blue-dark.css';
 
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .code-diff {
   white-space: pre-wrap;
 }

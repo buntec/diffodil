@@ -7,7 +7,7 @@ use axum::extract::{State, WebSocketUpgrade};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{debug, info, warn};
 
 use crate::git::{
@@ -18,9 +18,11 @@ use crate::git::{
 use crate::messages::{ClientMsg, ServerMsg, SessionState};
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct AppState {
-    pub repos: Vec<RepoEntry>,
+    pub repos_rx: watch::Receiver<Vec<RepoEntry>>,
+    pub repos_tx: Arc<watch::Sender<Vec<RepoEntry>>>,
+    pub notification_rx: watch::Receiver<Option<String>>,
+    pub notification_tx: Arc<watch::Sender<Option<String>>>,
     pub root: PathBuf,
 }
 
@@ -82,26 +84,52 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
         let mut watcher_handle: Option<tokio::task::JoinHandle<()>> = None;
         let mut watched_repo: Option<String> = None;
         let mut recent_repos: Vec<Worktree> = Vec::new();
+        let mut repos_rx = app_state.repos_rx.clone();
+        let mut notification_rx = app_state.notification_rx.clone();
 
-        // Send initial data
-        let _ = tx2
-            .send(vec![ServerMsg::Repos {
-                repos: app_state.repos.clone(),
-                recent: recent_repos.clone(),
-                root: app_state.root.to_string_lossy().to_string(),
-            }])
-            .await;
+        // Send initial data (may be empty if discovery is still in progress)
+        {
+            let repos = repos_rx.borrow_and_update().clone();
+            let notification = notification_rx.borrow_and_update().clone();
+            let _ = tx2
+                .send(vec![
+                    ServerMsg::Repos {
+                        repos,
+                        recent: recent_repos.clone(),
+                        root: app_state.root.to_string_lossy().to_string(),
+                    },
+                    ServerMsg::Notification {
+                        message: notification,
+                    },
+                ])
+                .await;
+        }
 
         loop {
             tokio::select! {
+                Ok(()) = repos_rx.changed() => {
+                    let repos = repos_rx.borrow_and_update().clone();
+                    let _ = tx2.send(vec![ServerMsg::Repos {
+                        repos,
+                        recent: recent_repos.clone(),
+                        root: app_state.root.to_string_lossy().to_string(),
+                    }]).await;
+                }
+                Ok(()) = notification_rx.changed() => {
+                    let message = notification_rx.borrow_and_update().clone();
+                    let _ = tx2.send(vec![ServerMsg::Notification { message }]).await;
+                }
                 Some(msg) = client_rx.recv() => {
                     if matches!(msg, ClientMsg::RefreshRepos) {
-                        let repos = find_git_repos(&app_state.root);
-                        let _ = tx2.send(vec![ServerMsg::Repos {
-                            repos,
-                            recent: recent_repos.clone(),
-                            root: app_state.root.to_string_lossy().to_string(),
-                        }]).await;
+                        let root = app_state.root.clone();
+                        let repos_tx = app_state.repos_tx.clone();
+                        let notif_tx = app_state.notification_tx.clone();
+                        let _ = notif_tx.send(Some("Discovering repos...".to_string()));
+                        tokio::task::spawn_blocking(move || {
+                            let repos = find_git_repos(&root);
+                            let _ = repos_tx.send(repos);
+                            let _ = notif_tx.send(None);
+                        });
                         continue;
                     }
 

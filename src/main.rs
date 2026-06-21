@@ -12,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use clap::{Parser, Subcommand};
 use rust_embed::Embed;
+use tokio::sync::watch;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -137,10 +138,27 @@ async fn main() {
         std::process::exit(1);
     });
 
-    let repos = find_git_repos(&root);
-    info!("Found {} git repos under {}", repos.len(), root.display());
+    let (repos_tx, repos_rx) = watch::channel(Vec::new());
+    let repos_tx = Arc::new(repos_tx);
+    let (notification_tx, notification_rx) =
+        watch::channel(Some("Discovering repos...".to_string()));
+    let notification_tx = Arc::new(notification_tx);
 
-    let app_state = Arc::new(AppState { repos, root });
+    let app_state = Arc::new(AppState {
+        repos_rx,
+        repos_tx: repos_tx.clone(),
+        notification_rx,
+        notification_tx: notification_tx.clone(),
+        root: root.clone(),
+    });
+
+    // Discover repos in the background so the server starts immediately
+    tokio::task::spawn_blocking(move || {
+        let repos = find_git_repos(&root);
+        info!("Found {} git repos under {}", repos.len(), root.display());
+        let _ = repos_tx.send(repos);
+        let _ = notification_tx.send(None);
+    });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))

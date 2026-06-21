@@ -77,6 +77,9 @@ pub enum ServerMsg {
         content: Option<String>,
         is_binary: bool,
     },
+    Notification {
+        message: Option<String>,
+    },
     Ping,
     Pong,
     Heartbeat {
