@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::git::{
     Commit, GitBranch, GitDiff, GitDiffAlgorithm, GitDiffSummary, GitFlags, GitTag, RepoEntry,
+    Worktree,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ pub enum ServerMsg {
     },
     Repos {
         repos: Vec<RepoEntry>,
+        recent: Vec<Worktree>,
         root: String,
     },
     Branches {
@@ -153,4 +155,6 @@ pub enum ClientMsg {
     GetUntrackedContent {
         path: String,
     },
+    #[serde(rename = "refresh-repos")]
+    RefreshRepos,
 }

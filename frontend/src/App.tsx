@@ -69,6 +69,7 @@ type UntrackedContent = {
 
 type State = {
   repos: RepoEntry[]
+  recent: Worktree[]
   root?: string
   branches: GitBranch[]
   tags: GitTag[]
@@ -91,7 +92,12 @@ const reducer = (state: State, action: any): State => {
 
   switch (action.type) {
     case 'repos':
-      return { ...state, repos: action.repos, root: action.root }
+      return {
+        ...state,
+        repos: action.repos,
+        recent: action.recent,
+        root: action.root,
+      }
     case 'branches':
       return { ...state, branches: action.branches }
     case 'tags':
@@ -242,9 +248,11 @@ function AppearanceSwitch({
 
 type RepoSelectProps = {
   repos: RepoEntry[]
+  recent: Worktree[]
   root?: string
   repo?: string
   onRepoChange: (repo: string) => void
+  onOpen: () => void
 }
 
 function displayPath(fullPath: string, root?: string): string {
@@ -255,11 +263,35 @@ function displayPath(fullPath: string, root?: string): string {
   return fullPath
 }
 
-function RepoSelect({ repos, root, repo, onRepoChange }: RepoSelectProps) {
+function RepoSelect({
+  repos,
+  recent,
+  root,
+  repo,
+  onRepoChange,
+  onOpen,
+}: RepoSelectProps) {
   return (
-    <Select.Root size="2" onValueChange={onRepoChange} value={repo ? repo : ''}>
+    <Select.Root
+      size="2"
+      onValueChange={onRepoChange}
+      onOpenChange={(open) => {
+        if (open) onOpen()
+      }}
+      value={repo ? repo : ''}
+    >
       <Select.Trigger variant="soft" placeholder="Select repo" />
       <Select.Content>
+        {recent.length > 0 && (
+          <Select.Group>
+            <Select.Label>Recent</Select.Label>
+            {recent.map((wt) => (
+              <Select.Item key={`recent-${wt.path}`} value={wt.path}>
+                {wt.branch || displayPath(wt.path, root)}
+              </Select.Item>
+            ))}
+          </Select.Group>
+        )}
         {repos.map((entry) =>
           entry.worktrees.length === 0 ? (
             <Select.Item key={entry.path} value={entry.path}>
@@ -1021,6 +1053,7 @@ const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${windo
 function App() {
   const [state, dispatch] = useReducer<State, any>(reducer, {
     repos: [],
+    recent: [],
     branches: [],
     tags: [],
     commits: [],
@@ -1111,7 +1144,9 @@ function App() {
         repo={state.session?.repo}
         root={state.root}
         repos={state.repos}
+        recent={state.recent}
         onRepoChange={(repo) => sendMsg({ type: 'repo-select', repo: repo })}
+        onOpen={() => sendMsg({ type: 'refresh-repos' })}
       />
       {state.session?.branch && (
         <BranchSelect

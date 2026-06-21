@@ -11,9 +11,9 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::git::{
-    GitFlags, RepoEntry, get_commit_diff, get_current_branch, get_git_diff, get_git_log,
-    get_list_of_branches, get_list_of_tags, get_untracked_files, git_diff_compact_summary,
-    git_fetch, read_untracked_file,
+    GitFlags, RepoEntry, Worktree, find_git_repos, get_commit_diff, get_current_branch,
+    get_git_diff, get_git_log, get_list_of_branches, get_list_of_tags, get_untracked_files,
+    git_diff_compact_summary, git_fetch, read_untracked_file,
 };
 use crate::messages::{ClientMsg, ServerMsg, SessionState};
 
@@ -81,11 +81,13 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
         let mut session = SessionState::default();
         let mut watcher_handle: Option<tokio::task::JoinHandle<()>> = None;
         let mut watched_repo: Option<String> = None;
+        let mut recent_repos: Vec<Worktree> = Vec::new();
 
         // Send initial data
         let _ = tx2
             .send(vec![ServerMsg::Repos {
                 repos: app_state.repos.clone(),
+                recent: recent_repos.clone(),
                 root: app_state.root.to_string_lossy().to_string(),
             }])
             .await;
@@ -93,6 +95,20 @@ async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
         loop {
             tokio::select! {
                 Some(msg) = client_rx.recv() => {
+                    if matches!(msg, ClientMsg::RefreshRepos) {
+                        let repos = find_git_repos(&app_state.root);
+                        let _ = tx2.send(vec![ServerMsg::Repos {
+                            repos,
+                            recent: recent_repos.clone(),
+                            root: app_state.root.to_string_lossy().to_string(),
+                        }]).await;
+                        continue;
+                    }
+
+                    if let ClientMsg::RepoSelect { ref repo } = msg {
+                        update_recent_repos(&mut recent_repos, repo);
+                    }
+
                     let state_changed = handle_client_msg(
                         msg,
                         &mut session,
@@ -292,6 +308,7 @@ async fn handle_client_msg(
             }
             false
         }
+        ClientMsg::RefreshRepos => false,
     }
 }
 
@@ -391,6 +408,25 @@ async fn send_diff(
             }
         }
     }
+}
+
+fn update_recent_repos(recent: &mut Vec<Worktree>, repo: &str) {
+    recent.retain(|wt| wt.path != repo);
+    let branch = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    recent.insert(
+        0,
+        Worktree {
+            path: repo.to_string(),
+            branch,
+        },
+    );
+    recent.truncate(5);
 }
 
 async fn watch_repo(repo: &str, tx: mpsc::Sender<()>) {
