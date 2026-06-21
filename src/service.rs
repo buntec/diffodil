@@ -3,33 +3,49 @@ use std::path::{Path, PathBuf};
 const LABEL: &str = "com.diffodil.server";
 
 pub fn install(root: &Path, port: u16, print: bool) {
-    match std::env::consts::OS {
-        "macos" => install_macos(root, port, print),
-        other => unsupported(other),
+    #[cfg(target_os = "macos")]
+    {
+        install_macos(root, port, print);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (root, port, print);
+        unsupported();
     }
 }
 
 pub fn uninstall() {
-    match std::env::consts::OS {
-        "macos" => uninstall_macos(),
-        other => unsupported(other),
+    #[cfg(target_os = "macos")]
+    {
+        uninstall_macos();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        unsupported();
     }
 }
 
 pub fn restart() {
-    match std::env::consts::OS {
-        "macos" => restart_macos(),
-        other => unsupported(other),
+    #[cfg(target_os = "macos")]
+    {
+        restart_macos();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        unsupported();
     }
 }
 
-fn unsupported(os: &str) -> ! {
+#[cfg(not(target_os = "macos"))]
+fn unsupported() -> ! {
     fail(&format!(
-        "installing diffodil as a service is not supported on {os} yet (only macOS). \
-         Run diffodil directly, or under your platform's service manager."
+        "installing diffodil as a service is not supported on {} yet (only macOS). \
+         Run diffodil directly, or under your platform's service manager.",
+        std::env::consts::OS,
     ));
 }
 
+#[cfg(target_os = "macos")]
 fn install_macos(root: &Path, port: u16, print: bool) {
     let exe = match current_exe() {
         Ok(p) => p,
@@ -100,6 +116,7 @@ fn install_macos(root: &Path, port: u16, print: bool) {
     );
 }
 
+#[cfg(target_os = "macos")]
 fn restart_macos() {
     let service_target = format!("{}/{LABEL}", gui_domain());
     if !run_launchctl(&["kickstart", "-k", &service_target], false) {
@@ -108,6 +125,7 @@ fn restart_macos() {
     println!("diffodil service restarted.");
 }
 
+#[cfg(target_os = "macos")]
 fn uninstall_macos() {
     let plist_path = match plist_path() {
         Some(p) => p,
@@ -127,6 +145,7 @@ fn uninstall_macos() {
     println!("diffodil service uninstalled.");
 }
 
+#[cfg(target_os = "macos")]
 fn render_plist(exe: &Path, root: &Path, port: u16) -> String {
     let log = log_path()
         .map(|p| p.display().to_string())
@@ -165,11 +184,13 @@ fn render_plist(exe: &Path, root: &Path, port: u16) -> String {
     )
 }
 
+#[cfg(target_os = "macos")]
 fn current_exe() -> std::io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
     Ok(std::fs::canonicalize(&exe).unwrap_or(exe))
 }
 
+#[cfg(target_os = "macos")]
 fn plist_path() -> Option<PathBuf> {
     home().map(|h| {
         h.join("Library")
@@ -178,21 +199,25 @@ fn plist_path() -> Option<PathBuf> {
     })
 }
 
+#[cfg(target_os = "macos")]
 fn log_path() -> Option<PathBuf> {
     home().map(|h| h.join("Library").join("Logs").join("diffodil.log"))
 }
 
+#[cfg(target_os = "macos")]
 fn home() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
 }
 
+#[cfg(target_os = "macos")]
 fn gui_domain() -> String {
     let uid = unsafe { libc::getuid() };
     format!("gui/{uid}")
 }
 
+#[cfg(target_os = "macos")]
 fn run_launchctl(args: &[&str], ignore_failure: bool) -> bool {
     match std::process::Command::new("launchctl").args(args).output() {
         Ok(out) => {
@@ -216,6 +241,7 @@ fn run_launchctl(args: &[&str], ignore_failure: bool) -> bool {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
