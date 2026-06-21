@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 // https://vite.dev/config/
 export default defineConfig({
   build: {
-    outDir: "src/diffodil/statics",
+    outDir: "frontend_dist",
   },
   server: {
     proxy: {

@@ -2,52 +2,58 @@
 
 Git diffs in your browser.
 
-Work in progress! 🚧
+A single-binary application that serves a web UI for browsing git diffs across your repositories.
 
-# Use
+## Install
 
-Using [uv](https://github.com/astral-sh/uv):
+Download the binary from the releases page, or build from source:
 
 ```sh
-uvx git+https://github.com/buntec/diffodil --help
-
+cargo install --path .
 ```
 
-(Should work similarly with `pipx`.)
+## Use
 
-# Dev
+```sh
+diffodil /path/to/repos
+```
+
+This starts a server on port 8765 (configurable with `--port`) and serves the UI at `http://localhost:8765`. All git repositories found recursively under the given root path will be available for browsing.
+
+```
+Usage: diffodil [OPTIONS] <ROOT>
+
+Arguments:
+  <ROOT>  Only git repos below the root will be considered
+
+Options:
+  -p, --port <PORT>  The port on which the server will listen [default: 8765]
+  -v, --verbose...   Increase verbosity
+  -h, --help         Print help
+```
+
+## Dev
 
 Prerequisites:
 
+- [Rust](https://rustup.rs/)
 - [bun](https://bun.com/)
-- [uv](https://github.com/astral-sh/uv)
+- [just](https://github.com/casey/just) (optional)
 
-Optional but recommended:
-
-- [just](https://github.com/casey/just)
-- [direnv](https://direnv.net/)
-- [pixi](https://pixi.sh/latest/)
-
-Install frontend dependencies like this:
+Install frontend dependencies:
 
 ```sh
 just init
 ```
 
-To work on frontend and backend, open two shells and do:
+For development, run the frontend dev server and the Rust backend in two shells:
 
 ```sh
 just run-frontend-dev
 just run-backend-dev /path/to/root
 ```
 
-Don't forget to rebuild and commit the production frontend assets when you are done:
-
-```sh
-just build-frontend
-```
-
-To build the Python wheel:
+Build the release binary (includes frontend):
 
 ```sh
 just build
