@@ -15,6 +15,11 @@
 
 .code-diff {
   white-space: pre-wrap;
+  flex: 1;
+}
+
+.diff-container {
+  background-color: var(--gray-a3);
 }
 
 .diff-line-number {
@@ -51,6 +56,10 @@
   display: flex;
   flex-direction: column;
   cursor: default;
+}
+
+.AccordionItem [data-radix-collapsible-content][data-state='closed'] {
+  display: none;
 }
 
 .ToastViewport {

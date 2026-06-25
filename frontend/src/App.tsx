@@ -629,23 +629,34 @@ function FileDiff({ file }: FileDiffProps) {
           return (
             <Box key={i}>
               <Code size="1">{hunk.header}</Code>
-              <Flex direction="column">
+              <Flex direction="column" className="diff-container">
                 {hunk.content.map((line, j) => {
                   const isDel = line.startsWith('-')
                   const isAdd = line.startsWith('+')
 
                   const diffLine = (
                     <Flex align="center" className="diff-line" key={j}>
-                      <Code className="diff-line-number" color="gray" size="1">
+                      <Code
+                        className="diff-line-number"
+                        variant="ghost"
+                        color="gray"
+                        size="1"
+                      >
                         {isAdd ? '' : hunk.old_start + k_old}
                       </Code>
-                      <Code className="diff-line-number" color="gray" size="1">
+                      <Code
+                        className="diff-line-number"
+                        variant="ghost"
+                        color="gray"
+                        size="1"
+                      >
                         {isDel ? '' : hunk.new_start + k_new}
                       </Code>
                       <Code
                         className="code-diff"
                         size="1"
                         wrap="wrap"
+                        variant={isDel ? 'soft' : isAdd ? 'soft' : 'ghost'}
                         color={isDel ? 'red' : isAdd ? 'green' : 'gray'}
                       >
                         {line}
@@ -905,7 +916,7 @@ function Diff({
                               </Text>
                             )
                           return (
-                            <Flex direction="column">
+                            <Flex direction="column" className="diff-container">
                               {entry.content.split('\n').map((line, i) => (
                                 <Flex
                                   align="center"
@@ -914,6 +925,7 @@ function Diff({
                                 >
                                   <Code
                                     className="diff-line-number"
+                                    variant="ghost"
                                     color="gray"
                                     size="1"
                                   >
@@ -923,6 +935,7 @@ function Diff({
                                     className="code-diff"
                                     size="1"
                                     wrap="wrap"
+                                    variant="ghost"
                                     color="gray"
                                   >
                                     {line}
